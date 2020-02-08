@@ -1,22 +1,34 @@
-use sled::{Db as SledDb, IVec};
-use rocksdb::DB as rocks;
+mod sleddb;
+mod rocks;
+mod storage;
+mod framework;
+
+use sleddb::Sled;
+use crate::framework::{FrameworkError, Framework};
+
+use crate::storage::{Storage, DbError};
+use crate::rocks::Rocks;
+use std::error::Error;
+
+fn print_result_option<E: std::marker::Sized + Error>(res: Result<Option<String>, E>) {
+    match res {
+        Ok(o) => match o {
+            Some(msg) => println!("Ok: {}", msg),
+            None => println!("not found"),
+        },
+        Err(e) => println!("error: {}", e.to_string()),
+    }
+}
 
 fn main() {
-    let sdb = Sled::new("/tmp/sled");
-    println!("insertion: {}", sdb.put("hello", "world").unwrap());
-    println!("retrieval {}", sdb.get("hello").unwrap());
-}
+//    let sdb: &Storage = &Sled::new(String::from("/tmp/sled"));
+    let sdb: &dyn Storage = &Rocks::new(String::from("/tmp/rocks"));
+    let framework: &dyn Framework = &framework::FrameworkV1 { storage: sdb };
 
-pub trait App {
-    fn get_by_id(&self, s: &str) -> Result<String, String>;
-}
 
-struct V1 {
-    framework: FrameworkV1
-}
+    let insertion_result = framework.put("hello", "world");
+    print_result_option(insertion_result);
 
-impl App for V1 {
-    fn get_by_id(&self, s: &str) -> Result<String, String> {
-        unimplemented!()
-    }
+    let retrieval_result = framework.get("hello");
+    print_result_option(retrieval_result);
 }
