@@ -24,10 +24,6 @@ pub fn new_msg(s: String, t: ErrorType) -> AppError {
     AppError { msg: s, error_type: t }
 }
 
-pub fn new_error(e: Error, t: ErrorType) -> AppError {
-    AppError { msg: e.to_string(), error_type: t }
-}
-
 #[derive(Debug)]
 pub struct AppError { msg: String, error_type: ErrorType }
 

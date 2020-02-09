@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 sled = "0.31.0"
+failure = "0.1.6"
 
 [dependencies.rocksdb]
 default-features = false

@@ -4,6 +4,7 @@ use crate::errors::AppError;
 pub trait Framework {
     fn get(&self, k: &str) -> Result<Option<String>, AppError>;
     fn put(&self, k: &str, v: &str) -> Result<(), AppError>;
+    fn range(&self, k: &str) -> Result<Box<dyn Iterator<Item=(String, String)>>, failure::Error>;
 }
 
 pub struct FrameworkV1 {
@@ -16,6 +17,9 @@ impl Framework for FrameworkV1 {
     }
     fn put(&self, k: &str, v: &str) -> Result<(), AppError> {
         self.storage.put(k, v)
+    }
+    fn range(&self, k: &str) -> Result<Box<dyn Iterator<Item=(String, String)>>, failure::Error> {
+        self.storage.range(k)
     }
 }
 
