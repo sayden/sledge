@@ -4,7 +4,7 @@ mod storage;
 mod framework;
 mod app;
 
-mod app_errors;
+mod errors;
 
 use crate::rocks::Rocks;
 use std::error::Error;
