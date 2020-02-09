@@ -1,19 +1,15 @@
 use crate::storage::{Storage, DbError};
 use std::error::Error;
-use rocksdb::{DB, Options};
+use rocksdb::{DB};
 
 pub struct Rocks {
     db: rocksdb::DB,
 }
 
 impl Rocks {
-    pub(crate) fn new(path: String) -> Self {
+    pub fn new(path: String) -> Box<dyn Storage> {
         let db = DB::open_default(path).unwrap();
-        Rocks { db }
-    }
-
-    fn vec_to_string(ivec: Vec<u8>) -> String {
-        String::from_utf8(ivec.to_vec()).unwrap()
+        Box::new(Rocks { db })
     }
 
     fn asads<E: std::marker::Sized + Error>(i: &Result<Option<Vec<u8>>, E>) -> Result<Option<String>, DbError> {
@@ -22,7 +18,7 @@ impl Rocks {
                 Some(v) => {
                     let out = match String::from_utf8(v.to_vec()) {
                         Ok(s) => Ok(Some(s)),
-                        Err(e) => Err(DbError::new("vec parsing error".to_string()))
+                        Err(e) => Err(DbError::new(format!("vec parsing error: '{}'", e.description()))),
                     };
                     out
                 }

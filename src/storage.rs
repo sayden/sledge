@@ -1,7 +1,6 @@
 use core::fmt;
 use std::error;
-use crate::sleddb::Sled;
-use std::borrow::Borrow;
+//use crate::sleddb::Sled;
 
 pub trait Storage {
     fn get(&self, s: &str) -> Result<Option<String>, DbError>;

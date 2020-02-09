@@ -8,11 +8,11 @@ pub trait Framework {
     fn put(&self, k: &str, v: &str) -> Result<Option<String>, FrameworkError>;
 }
 
-pub struct FrameworkV1<'a> {
-    pub storage: &'a Storage
+pub struct FrameworkV1 {
+    pub storage: Box<dyn Storage>
 }
 
-impl Framework for FrameworkV1<'_> {
+impl Framework for FrameworkV1 {
     fn get(&self, s: &str) -> Result<Option<String>, FrameworkError> {
         match self.storage.get(s) {
             Ok(o) => match o {
@@ -34,7 +34,7 @@ impl Framework for FrameworkV1<'_> {
     }
 }
 
-pub fn new_framework(s: &'static Storage) -> Box<Framework> {
+pub fn new(s: Box<dyn Storage>) -> Box<dyn Framework> {
     Box::new(FrameworkV1 { storage: s })
 }
 

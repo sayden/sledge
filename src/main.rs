@@ -2,13 +2,12 @@ mod sleddb;
 mod rocks;
 mod storage;
 mod framework;
+mod app;
 
-use sleddb::Sled;
-use crate::framework::{FrameworkError, Framework};
-
-use crate::storage::{Storage, DbError};
 use crate::rocks::Rocks;
 use std::error::Error;
+use crate::sleddb::Sled;
+use crate::storage::Storage;
 
 fn print_result_option<E: std::marker::Sized + Error>(res: Result<Option<String>, E>) {
     match res {
@@ -21,14 +20,29 @@ fn print_result_option<E: std::marker::Sized + Error>(res: Result<Option<String>
 }
 
 fn main() {
-//    let sdb: &Storage = &Sled::new(String::from("/tmp/sled"));
-    let sdb: &dyn Storage = &Rocks::new(String::from("/tmp/rocks"));
-    let framework: &dyn Framework = &framework::FrameworkV1 { storage: sdb };
+    let st = get_storage(StorageTypes::Sled, "/tmp/sled");
+//    let st = get_storage(StorageTypes::Rocks, "/tmp/rocks");
+
+    let framework = framework::new(st);
+    let app = app::new(framework);
 
 
-    let insertion_result = framework.put("hello", "world");
-    print_result_option(insertion_result);
+//    let insertion_result = app.put("hello", "world");
+//    print_result_option(insertion_result);
 
-    let retrieval_result = framework.get("hello");
+    let retrieval_result = app.get_by_id("hello");
     print_result_option(retrieval_result);
+}
+
+#[derive(Debug)]
+enum StorageTypes {
+    Sled,
+    Rocks
+}
+
+fn get_storage(s: StorageTypes, p: &str) -> Box<dyn Storage> {
+    match s {
+        StorageTypes::Sled => Sled::new(p.to_string()),
+        StorageTypes::Rocks => Rocks::new(p.to_string()),
+    }
 }
