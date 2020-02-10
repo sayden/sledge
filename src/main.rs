@@ -20,13 +20,11 @@ fn main() {
         Err(e) => panic!("Couldn't read STORAGE ({})", e),
     };
 
-    let framework = framework::new(st);
-
-    framework.put("01", "hello").unwrap();
-    framework.put("02", "world").unwrap();
-    framework.put("03", "ula").unwrap();
-    framework.put("04", "tyrion").unwrap();
-    let results = framework.range("01");
+    st.put("01", "hello").unwrap();
+    st.put("02", "world").unwrap();
+    st.put("03", "ula").unwrap();
+    st.put("04", "tyrion").unwrap();
+    let results = st.range("01");
     match results {
         Ok(values) => {
             for value in values {
@@ -36,10 +34,10 @@ fn main() {
         Err(e) => println!("Error chungo: {}", e)
     }
 
-//    let insertion_result = framework.put("01", "world");
+//    let insertion_result = st.put("01", "world");
 //    print_put_result(insertion_result);
 
-    let app = api::new(framework);
+    let app = api::new(st);
 
     let key = "01";
     let retrieval_result = app.get_by_id(key);

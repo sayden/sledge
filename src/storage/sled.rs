@@ -1,5 +1,5 @@
 use sled::IVec;
-use crate::components::Storage;
+use crate::components::{Storage, Bound};
 use crate::conversions::vector::convert_vec_pairs_u8;
 
 pub struct Sled {
@@ -48,5 +48,13 @@ impl Storage for Sled {
             });
 
         Ok(Box::new(iter))
+    }
+
+    fn since(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<Iterator<Item=(String, String)>>, failure::Error> {
+        unimplemented!()
+    }
+
+    fn backwards(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<Iterator<Item=(String, String)>>, failure::Error> {
+        unimplemented!()
     }
 }

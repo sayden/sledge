@@ -1,4 +1,4 @@
-use crate::components::Storage;
+use crate::components::{Storage, Bound};
 use rocksdb::DB;
 
 use crate::conversions::vector::convert_vec_pairs;
@@ -43,5 +43,13 @@ impl Storage for Rocks {
             });
 
         Ok(Box::new(converted_to_string))
+    }
+
+    fn since(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<Iterator<Item=(String, String)>>, failure::Error> {
+        unimplemented!()
+    }
+
+    fn backwards(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<Iterator<Item=(String, String)>>, failure::Error> {
+        unimplemented!()
     }
 }

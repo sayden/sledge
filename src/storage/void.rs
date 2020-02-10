@@ -1,8 +1,7 @@
-use crate::components::Storage;
+use crate::components::{Storage, Bound};
 use failure::Error;
 
 pub struct Void {}
-
 
 impl Void {
     pub fn new() -> Box<dyn Storage> {
@@ -22,5 +21,13 @@ impl Storage for Void {
     fn range(&self, _: &str) -> Result<Box<dyn Iterator<Item=(String, String)>>, Error> {
         let v = vec![1, 2, 3, 4, 5].into_iter();
         Ok(Box::new(v.map(|x| (format!("{}", x), format!("{}", x)))))
+    }
+
+    fn since(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<dyn Iterator<Item=(String, String)>>, failure::Error> {
+        unimplemented!()
+    }
+
+    fn backwards(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<dyn Iterator<Item=(String, String)>>, failure::Error> {
+        unimplemented!()
     }
 }

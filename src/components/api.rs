@@ -1,4 +1,4 @@
-use crate::framework::Framework;
+use crate::components::Storage;
 
 
 pub trait App {
@@ -7,16 +7,16 @@ pub trait App {
 }
 
 struct V1 {
-    framework: Box<dyn Framework>
+    storage: Box<dyn Storage>
 }
 
-pub fn new(f: Box<dyn Framework>) -> Box<dyn App> {
-    return Box::new(V1 { framework: f });
+pub fn new(f: Box<dyn Storage>) -> Box<dyn App> {
+    return Box::new(V1 { storage: f });
 }
 
 impl App for V1 {
     fn get_by_id(&self, k: &str) -> Result<Option<String>, failure::Error> {
-        self.framework.get(k)
+        self.storage.get(k)
     }
 
 //    fn get_since(&self, k: &str, limit: u32) -> Result<Option<dyn Iterator<Item=_>>, AppError> {
