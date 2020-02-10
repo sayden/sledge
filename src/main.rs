@@ -21,7 +21,6 @@ fn main() {
     };
 
     let framework = framework::new(st);
-//    let app = app::new(framework);
 
     framework.put("01", "hello").unwrap();
     framework.put("02", "world").unwrap();
@@ -40,8 +39,17 @@ fn main() {
 //    let insertion_result = framework.put("01", "world");
 //    print_put_result(insertion_result);
 
-//    let retrieval_result = st.get("hello");
-//    print_result_option(retrieval_result);
+    let app = app::new(framework);
+
+    let key = "01";
+    let retrieval_result = app.get_by_id(key);
+    match retrieval_result {
+        Ok(o) => match o {
+            Some(v) => println!("{}", v),
+            None => println!("key '{}' not found", key)
+        },
+        Err(e) => println!("{}", e),
+    }
 }
 
 fn get_storage(s: &str, p: &str) -> Box<dyn Storage> {

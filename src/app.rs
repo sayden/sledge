@@ -1,10 +1,9 @@
 use crate::framework::Framework;
-use crate::errors::{AppError};
 
 
 pub trait App {
-    fn get_by_id(&self, k: &str) -> Result<Option<String>, AppError>;
-//    fn get_since(&self, k: &str, limit: u32) -> Result<Option<dyn Iterator>, AppError>;
+    fn get_by_id(&self, k: &str) -> Result<Option<String>, failure::Error>;
+//    fn get_since(&self, k: &str, limit: u32) -> Result<Option<dyn Iterator>, failure::Error>;
 }
 
 struct V1 {
@@ -16,7 +15,7 @@ pub fn new(f: Box<dyn Framework>) -> Box<dyn App> {
 }
 
 impl App for V1 {
-    fn get_by_id(&self, k: &str) -> Result<Option<String>, AppError> {
+    fn get_by_id(&self, k: &str) -> Result<Option<String>, failure::Error> {
         self.framework.get(k)
     }
 
