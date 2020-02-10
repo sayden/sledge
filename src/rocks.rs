@@ -18,9 +18,9 @@ impl Storage for Rocks {
     fn get(&self, s: &str) -> Result<Option<String>, failure::Error> {
         let result = self.db.get(s)?;
 
-        let b = result.and_then(|r| match String::from_utf8(r.to_vec()) {
+        let b = result.and_then(|r| match String::from_utf8(r) {
             Ok(v) => Some(v),
-            Err(e) => print_err_and_none!(e)
+            Err(e) => print_err_and_none!(e),
         });
 
         Ok(b)
@@ -35,19 +35,11 @@ impl Storage for Rocks {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Forward));
         let converted_to_string = db_iter
-            .map(|(x, y)| {
-                let maybe_pair = transformations::convert_vec_pairs(x.to_vec(), y.to_vec());
-                let pairs = match maybe_pair {
+            .filter_map(|(x, y)| {
+                return match transformations::convert_vec_pairs(x.into_vec(), y.into_vec()) {
                     Err(e) => print_err_and_none!(e),
                     Ok(pair) => Some(pair),
                 };
-
-                pairs
-            })
-            .filter_map(|x| {
-                return if x.is_some() {
-                    Some(x.unwrap())
-                } else { None };
             });
 
         Ok(Box::new(converted_to_string))
