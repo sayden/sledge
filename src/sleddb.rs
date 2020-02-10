@@ -16,12 +16,10 @@ impl Sled {
     }
 
     fn parse_potential_value(i: &Option<IVec>) -> Result<Option<String>, failure::Error> {
-        return match i {
-            Some(s) => match String::from_utf8(s.to_vec()) {
-                Ok(x) => Ok(Some(x)),
-                Err(e) => bail!(e),
-            },
-            None => Ok(None),
+        let value = i.as_ref().ok_or(failure::err_msg("value not found"))?;
+        return match std::str::from_utf8(value.as_ref()) {
+            Ok(x) => Ok(Some(x.to_string())),
+            Err(e) => bail!(e),
         };
     }
 }
@@ -45,15 +43,11 @@ impl Storage for Sled {
 
         let iter = ranged_result
             .filter_map(|item| {
-                return match item {
-                    Ok(i) => {
-                        match transformations::convert_vec_pairs(i.0.as_ref().to_vec(), i.0.as_ref().to_vec()) {
-                            Ok(s) => Some(s),
-                            Err(e) => print_err_and_none!(e),
-                        }
-                    }
-                    Err(e) => print_err_and_none!(e)
-                };
+                let i = item.or_else(|e| bail!(e)).unwrap();
+                match transformations::convert_vec_pairs_u8(i.0.as_ref(), i.1.as_ref()) {
+                    Ok(s) => Some(s),
+                    Err(e) => print_err_and_none!(e),
+                }
             });
 
         Ok(Box::new(iter))
