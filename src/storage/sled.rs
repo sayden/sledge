@@ -1,9 +1,6 @@
 use sled::IVec;
-
-use crate::transformations;
-use crate::storage::Storage;
-use crate::print_err_and_none;
-
+use crate::components::Storage;
+use crate::conversions::vector::convert_vec_pairs_u8;
 
 pub struct Sled {
     db: sled::Db,
@@ -44,7 +41,7 @@ impl Storage for Sled {
         let iter = ranged_result
             .filter_map(|item| {
                 let i = item.or_else(|e| bail!(e)).unwrap();
-                match transformations::convert_vec_pairs_u8(i.0.as_ref(), i.1.as_ref()) {
+                match convert_vec_pairs_u8(i.0.as_ref(), i.1.as_ref()) {
                     Ok(s) => Some(s),
                     Err(e) => print_err_and_none!(e),
                 }

@@ -1,7 +1,7 @@
-use crate::storage::Storage;
+use crate::components::Storage;
 use rocksdb::DB;
-use crate::transformations;
-use crate::print_err_and_none;
+
+use crate::conversions::vector::convert_vec_pairs;
 
 pub struct Rocks {
     db: rocksdb::DB,
@@ -36,7 +36,7 @@ impl Storage for Rocks {
                                                                    rocksdb::Direction::Forward));
         let converted_to_string = db_iter
             .filter_map(|(x, y)| {
-                return match transformations::convert_vec_pairs(x.into_vec(), y.into_vec()) {
+                return match convert_vec_pairs(x.into_vec(), y.into_vec()) {
                     Err(e) => print_err_and_none!(e),
                     Ok(pair) => Some(pair),
                 };

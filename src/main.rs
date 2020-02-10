@@ -1,18 +1,18 @@
-mod sleddb;
-mod rocks;
-mod storage;
-mod framework;
-mod app;
-mod transformations;
+#[macro_use]
 mod errors;
 
 #[macro_use]
 extern crate failure;
 
-use crate::rocks::Rocks;
-use crate::sleddb::Sled;
-use crate::storage::Storage;
 use std::env;
+use components::*;
+use crate::storage::sled::Sled;
+use crate::storage::rocks::Rocks;
+use crate::storage::void::Void;
+
+mod storage;
+mod components;
+mod conversions;
 
 fn main() {
     let st = match env::var("STORAGE") {
@@ -39,7 +39,7 @@ fn main() {
 //    let insertion_result = framework.put("01", "world");
 //    print_put_result(insertion_result);
 
-    let app = app::new(framework);
+    let app = api::new(framework);
 
     let key = "01";
     let retrieval_result = app.get_by_id(key);
@@ -52,10 +52,11 @@ fn main() {
     }
 }
 
-fn get_storage(s: &str, p: &str) -> Box<dyn Storage> {
+fn get_storage(s: &str, p: &str) -> Box<dyn components::Storage> {
     match s {
         "sled" => Sled::new(p.to_string()),
         "rocksdb" => Rocks::new(p.to_string()),
+        "void" => Void::new(),
         _ => panic!("storage '{}' not found", s),
     }
 }
