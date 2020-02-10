@@ -1,15 +1,10 @@
 use sled::IVec;
 
 use crate::errors::{AppError, ErrorType};
-use crate::errors;
+use crate::{errors, transformations};
 use crate::storage::Storage;
-use std::string::FromUtf8Error;
+use crate::{convert_to_ap_error, print_err_and_none};
 
-macro_rules! convert_to_ap_error {
-    ($i: expr, $e: ident)=>{
-        Err(errors::new_msg(format!("{}", $i), ErrorType::$e))
-    }
-}
 
 pub struct Sled {
     db: sled::Db,
@@ -21,10 +16,13 @@ impl Sled {
         Box::new(Sled { db })
     }
 
-    fn asads(i: &Result<Option<IVec>, sled::Error>) -> Result<Option<String>, AppError> {
+    fn parse_potential_value(i: &Result<Option<IVec>, sled::Error>) -> Result<Option<String>, AppError> {
         return match i {
             Ok(o) => match o {
-                Some(s) => Ok(Some(String::from_utf8(s.to_vec()).unwrap())),
+                Some(s) => match String::from_utf8(s.to_vec()) {
+                    Ok(x) => Ok(Some(x)),
+                    Err(e) => convert_to_ap_error!(e, Db),
+                },
                 None => Ok(None),
             }
             Err(e) => convert_to_ap_error!(e, Db),
@@ -32,10 +30,11 @@ impl Sled {
     }
 }
 
+
 impl Storage for Sled {
     fn get(&self, s: &str) -> Result<Option<String>, AppError> {
         let db_result = self.db.get(s);
-        let result = Sled::asads(&db_result);
+        let result = Sled::parse_potential_value(&db_result);
         result
     }
 
@@ -48,46 +47,19 @@ impl Storage for Sled {
     fn range(&self, k: &str) -> Result<Box<dyn Iterator<Item=(String, String)>>, failure::Error> {
         let ranged_result = self.db.range(k..);
 
-        let mut err: Option<failure::Error> = None;
-
         let iter = ranged_result
-            .map(|item| {
-                match item {
-                    Err(_) => { ("".to_string(), "".to_string()) }
-                    Ok(result) => {
-                        let maybe_pair = convert_ivec_pairs(result.0, result.1);
-                        let pairs = match maybe_pair {
-                            Err(e) => {
-                                ("".to_string(), "".to_string())
-                            }
-
-                            Ok(pair) => pair,
-                        };
-
-                        pairs
+            .filter_map(|item| {
+                return match item {
+                    Ok(i) => {
+                        match transformations::convert_vec_pairs(i.0.as_ref().to_vec(), i.0.as_ref().to_vec()) {
+                            Ok(s) => Some(s),
+                            Err(e) => print_err_and_none!(e),
+                        }
                     }
-                }
+                    Err(e) => print_err_and_none!(e)
+                };
             });
-
-        match err {
-            Some(e) => bail!(e),
-            None => (),
-        }
 
         Ok(Box::new(iter))
     }
-}
-
-fn convert_ivec_pairs(x: IVec, y: IVec) -> Result<(String, String), failure::Error> {
-    let x1: Result<String, FromUtf8Error> = String::from_utf8(x.as_ref().to_vec());
-    let y1: Result<String, FromUtf8Error> = String::from_utf8(y.as_ref().to_vec());
-
-    let (x2, y2) = match (x1, y1) {
-        (Ok(x3), Ok(y3)) => (x3, y3),
-        (Err(e1), Err(e2)) => bail!(errors::new_msg(format!("{}, {}", e1, e2), ErrorType::Db)),
-        (_, Err(e2)) => bail!(e2),
-        (Err(e1), _) => bail!(e1),
-    };
-
-    Ok((x2, y2))
 }

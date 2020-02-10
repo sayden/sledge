@@ -39,3 +39,20 @@ impl error::Error for AppError {
         None
     }
 }
+
+#[macro_export]
+macro_rules! print_err_and_none {
+    ($e:expr) => {{
+        {
+            println!("{}", $e);
+            None
+        }
+    }}
+}
+
+#[macro_export]
+macro_rules! convert_to_ap_error {
+    ($i: expr, $e: ident)=>{
+        Err(errors::new_msg(format!("{}", $i), ErrorType::$e))
+    }
+}

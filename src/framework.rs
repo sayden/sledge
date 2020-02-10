@@ -26,8 +26,3 @@ impl Framework for FrameworkV1 {
 pub fn new(s: Box<dyn Storage>) -> Box<dyn Framework> {
     Box::new(FrameworkV1 { storage: s })
 }
-
-pub struct KV {
-    k: String,
-    v: String,
-}

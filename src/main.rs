@@ -3,14 +3,13 @@ mod rocks;
 mod storage;
 mod framework;
 mod app;
+mod transformations;
+mod errors;
 
 #[macro_use]
 extern crate failure;
 
-mod errors;
-
 use crate::rocks::Rocks;
-use std::error::Error;
 use crate::sleddb::Sled;
 use crate::storage::Storage;
 use std::env;
