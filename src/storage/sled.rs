@@ -1,7 +1,7 @@
 use anyhow::Error;
 use sled::IVec;
 use crate::conversions::vector::convert_vec_pairs_u8;
-use crate::components::storage::{Storage, Options, SledgeIterator, KV};
+use crate::components::storage::{Storage, Options, SledgeIterator};
 
 pub struct Sled {
     db: sled::Db,
@@ -31,7 +31,7 @@ impl Storage for Sled {
         result
     }
 
-    fn put(&self, k: String, v: String) -> Result<(), Error> {
+    fn put(&mut self, k: String, v: String) -> Result<(), Error> {
         self.db.insert(k.as_bytes(), v.as_bytes())
             .and_then(|_| Ok(()))
             .or_else(|x| bail!(x))
@@ -52,15 +52,15 @@ impl Storage for Sled {
         Ok(Box::new(iter))
     }
 
-    fn since_until(&self, k: String, k2: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+    fn since_until(&self, _k: String, _k2: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 
-    fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 
-    fn reverse_until(&self, k: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, _k: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 }

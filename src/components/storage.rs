@@ -1,10 +1,10 @@
 use anyhow::Error;
 use std::fmt;
-use failure::_core::fmt::Formatter;
+use std::fmt::Formatter;
 
 pub(crate) type SledgeIterator = dyn Iterator<Item=KV>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KV {
     pub key: String,
     pub value: String,
@@ -22,15 +22,16 @@ impl PartialEq for KV {
     }
 }
 
-pub enum Bound {
-    Limit(u32),
-    Key(String),
-    KeyEqualsValue(KV),
-    Infinite,
-}
-
 pub enum Options {
-    Bounds(Bound)
+    LimitTo(u32),
+    Skip(u32),
+    Since(String),
+    SinceKV(KV),
+    Until(String),
+    UntilKV(KV),
+    Infinite,
+    ExcludeFirst,
+    ExcludeLast,
 }
 
 
@@ -60,7 +61,7 @@ pub enum Options {
 */
 pub trait Storage {
     fn get(&self, s: String) -> Result<Option<String>, Error>;
-    fn put(&self, k: String, v: String) -> Result<(), Error>;
+    fn put(&mut self, k: String, v: String) -> Result<(), Error>;
 
     fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
     fn since_until(&self, k: String, k2: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error>;

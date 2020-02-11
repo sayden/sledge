@@ -3,10 +3,11 @@ use sledge::storage::void::Void;
 use std::env;
 use sledge::storage::rocks::Rocks;
 use sledge::components::{api};
-use sledge::components::storage::{Storage, Options, Bound};
+use sledge::components::storage::{Storage, Options};
+use sledge::storage::memory::Memory;
 
 fn main() {
-    let st = match env::var("STORAGE") {
+    let mut st = match env::var("STORAGE") {
         Ok(selected_storage) => get_storage(selected_storage.as_str(), format!("/tmp/{}", selected_storage).as_ref()),
         Err(e) => panic!("Couldn't read STORAGE ({})", e),
     };
@@ -30,9 +31,9 @@ fn main() {
 //    print_put_result(insertion_result);
 
     let key = "01".to_string();
-    let a = st.since_until("mario".to_string(),"ula".to_string(),Some(vec![Options::Bounds(Bound::Infinite)]));
+    let a = st.since_until("02".to_string(),"03".to_string(),Some(vec![Options::Infinite]));
     for i in a.unwrap(){
-        println!("Since 02 to 04! {}", i);
+        println!("Since mario to ula! {}", i);
     }
 
     println!("-------------------------");
@@ -52,6 +53,7 @@ fn get_storage(s: &str, p: &str) -> Box<dyn Storage> {
         "sled" => Sled::new(p.to_string()),
         "rocksdb" => Rocks::new(p.to_string()),
         "void" => Void::new(),
+        "memory" => Memory::new(),
         _ => panic!("storage '{}' not found", s),
     }
 }

@@ -2,13 +2,8 @@ use rocksdb::{DB, DBIterator};
 use anyhow::Error;
 
 use crate::conversions::vector::convert_vec_pairs;
-use crate::components::storage::{Storage, SledgeIterator, Options};
-use crate::components::storage::{Bound, KV};
-use crate::components::storage::Bound::{Limit, Key, KeyEqualsValue};
+use crate::components::storage::{Storage, SledgeIterator, Options, KV};
 use std::iter::FilterMap;
-use std::hash::Hash;
-use std::collections::HashSet;
-use sled::Iter;
 
 struct Until {
     until_key: KV,
@@ -21,7 +16,8 @@ impl Iterator for Until {
     fn next(&mut self) -> Option<Self::Item> {
         let x = self.underlying.next()?;
         match x == self.until_key {
-            True => Some(x),
+            true => Some(x),
+            _ => None
         }
     }
 }
@@ -50,7 +46,7 @@ impl Storage for Rocks {
         Ok(b)
     }
 
-    fn put(&self, k: String, v: String) -> Result<(), Error> {
+    fn put(&mut self, k: String, v: String) -> Result<(), Error> {
         self.db.put(k, v)
             .or_else(|x| bail!(x))
     }
@@ -61,8 +57,7 @@ impl Storage for Rocks {
         Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn since_until(&self, k: String, k2: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
-
+    fn since_until(&self, k: String, k2: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Forward));
         Ok(Box::new(Rocks::simple_iterator(db_iter).take_while(move |x| x.key != k2)))
@@ -74,7 +69,7 @@ impl Storage for Rocks {
         Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn reverse_until(&self, k: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, _k: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 }

@@ -1,4 +1,5 @@
 pub mod rocks;
 pub mod sled;
 pub mod void;
-mod bounds;
+pub mod memory;
+mod options;
