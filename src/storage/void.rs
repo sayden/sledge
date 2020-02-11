@@ -1,5 +1,5 @@
-use crate::components::{Storage, Bound};
-use failure::Error;
+use crate::components::storage::{Storage, Options, KV, SledgeIterator};
+use anyhow::Error;
 
 pub struct Void {}
 
@@ -18,16 +18,20 @@ impl Storage for Void {
         Ok(())
     }
 
-    fn range(&self, _: &str) -> Result<Box<dyn Iterator<Item=(String, String)>>, Error> {
+    fn since(&self, _: &str) -> Result<Box<SledgeIterator>, Error> {
         let v = vec![1, 2, 3, 4, 5].into_iter();
-        Ok(Box::new(v.map(|x| (format!("{}", x), format!("{}", x)))))
+        Ok(Box::new(v.map(|x| (KV { key: format!("{}", x), value: format!("{}", x) }))))
     }
 
-    fn since(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<dyn Iterator<Item=(String, String)>>, failure::Error> {
+    fn since_until(&self, k: &str, k2: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 
-    fn backwards(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<dyn Iterator<Item=(String, String)>>, failure::Error> {
+    fn reverse(&self, k: &str) -> Result<Box<SledgeIterator>, Error> {
+        unimplemented!()
+    }
+
+    fn reverse_until(&self, k: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 }

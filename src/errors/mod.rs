@@ -7,3 +7,5 @@ macro_rules! print_err_and_none {
         }
     }}
 }
+
+pub mod storage;

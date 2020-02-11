@@ -3,14 +3,21 @@ name = "sledge"
 version = "0.1.0"
 authors = ["sayden <mariocaster@gmail.com>"]
 edition = "2018"
+exclude = ["benchmarks", "examples", "scripts"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 sled = "0.31.0"
 failure = "0.1.6"
+anyhow = "1.0.26"
 
 [dependencies.rocksdb]
 default-features = false
 features = ["lz4"]
 version = "0.13.0"
+
+[[example]]
+name = "main"
+

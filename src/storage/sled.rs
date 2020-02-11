@@ -1,6 +1,7 @@
+use anyhow::Error;
 use sled::IVec;
-use crate::components::{Storage, Bound};
 use crate::conversions::vector::convert_vec_pairs_u8;
+use crate::components::storage::{Storage, Options, SledgeIterator, KV};
 
 pub struct Sled {
     db: sled::Db,
@@ -12,8 +13,8 @@ impl Sled {
         Box::new(Sled { db })
     }
 
-    fn parse_potential_value(i: &Option<IVec>) -> Result<Option<String>, failure::Error> {
-        let value = i.as_ref().ok_or(failure::err_msg("value not found"))?;
+    fn parse_potential_value(i: &Option<IVec>) -> Result<Option<String>, Error> {
+        let value = i.as_ref().ok_or(anyhow::anyhow!("value not found"))?;
         return match std::str::from_utf8(value.as_ref()) {
             Ok(x) => Ok(Some(x.to_string())),
             Err(e) => bail!(e),
@@ -23,19 +24,20 @@ impl Sled {
 
 
 impl Storage for Sled {
-    fn get(&self, s: &str) -> Result<Option<String>, failure::Error> {
-        let db_result = self.db.get(s).or_else(|e| bail!(e)).unwrap();
+    fn get(&self, s: &str) -> Result<Option<String>, Error> {
+//        let db_result = self.db.get(s).or_else(|e| bail!(e)).unwrap();
+        let db_result = self.db.get(s)?;
         let result = Sled::parse_potential_value(&db_result);
         result
     }
 
-    fn put(&self, k: &str, v: &str) -> Result<(), failure::Error> {
+    fn put(&self, k: &str, v: &str) -> Result<(), Error> {
         self.db.insert(k, v)
             .and_then(|_| Ok(()))
             .or_else(|x| bail!(x))
     }
 
-    fn range(&self, k: &str) -> Result<Box<dyn Iterator<Item=(String, String)>>, failure::Error> {
+    fn since(&self, k: &str) -> Result<Box<SledgeIterator>, Error> {
         let ranged_result = self.db.range(k..);
 
         let iter = ranged_result
@@ -50,11 +52,15 @@ impl Storage for Sled {
         Ok(Box::new(iter))
     }
 
-    fn since(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<Iterator<Item=(String, String)>>, failure::Error> {
+    fn since_until(&self, k: &str, k2: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 
-    fn backwards(&self, k: &str, bounds: Box<[Bound]>) -> Result<Box<Iterator<Item=(String, String)>>, failure::Error> {
+    fn reverse(&self, k: &str) -> Result<Box<SledgeIterator>, Error> {
+        unimplemented!()
+    }
+
+    fn reverse_until(&self, k: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 }
