@@ -10,7 +10,6 @@ exclude = ["benchmarks", "examples", "scripts"]
 
 [dependencies]
 sled = "0.31.0"
-failure = "0.1.6"
 anyhow = "1.0.26"
 
 [dependencies.rocksdb]
