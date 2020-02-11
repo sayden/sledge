@@ -16,6 +16,9 @@ fn main() {
     st.put("02".to_string(), "world".to_string()).unwrap();
     st.put("03".to_string(), "ula".to_string()).unwrap();
     st.put("04".to_string(), "tyrion".to_string()).unwrap();
+    st.put("05".to_string(), "rocco".to_string()).unwrap();
+    st.put("06".to_string(), "rocco".to_string()).unwrap();
+    st.put("07".to_string(), "yoda".to_string()).unwrap();
     let results = st.since("01".to_string());
     match results {
         Ok(values) => {

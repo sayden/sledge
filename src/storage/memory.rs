@@ -36,9 +36,15 @@ impl Storage for Memory {
         Ok(Box::new(v.map(|x| (KV { key: format!("{}", x), value: format!("{}", x) }))))
     }
 
-    fn since_until(&self, _since_key: String, to_key: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
-        let found = KV { key: to_key.to_string(), value: "".to_string() };
-        let res = self.v.clone().into_iter().until(found);
+    fn since_until(&self, _since_key: String, _to_key: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+        let res = self.v.clone().into_iter().until(
+            KV::empty(),
+            2,
+            0,
+            "05".to_string(),
+            "".to_string(),
+            KV::empty()
+        );
 
         Ok(Box::new(res))
     }

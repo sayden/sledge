@@ -10,6 +10,12 @@ pub struct KV {
     pub value: String,
 }
 
+impl KV {
+    pub fn empty() -> Self {
+        KV { key: "".to_string(), value: "".to_string() }
+    }
+}
+
 impl fmt::Display for KV {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Key: {}, Value: {}", self.key, self.value)
@@ -23,13 +29,18 @@ impl PartialEq for KV {
 }
 
 pub enum Options {
+    //Upper bounds
     LimitTo(u32),
+    Until(String),
+    UntilKV(KV),
+
+    // Lower bounds
     Skip(u32),
     Since(String),
     SinceKV(KV),
-    Until(String),
-    UntilKV(KV),
+
     Infinite,
+    
     ExcludeFirst,
     ExcludeLast,
 }
