@@ -5,6 +5,26 @@ use crate::conversions::vector::convert_vec_pairs;
 use crate::components::storage::{Storage, SledgeIterator, Options};
 use crate::components::storage::{Bound, KV};
 use crate::components::storage::Bound::{Limit, Key, KeyEqualsValue};
+use std::iter::FilterMap;
+use std::hash::Hash;
+use std::collections::HashSet;
+use sled::Iter;
+
+struct Until {
+    until_key: KV,
+    underlying: dyn Iterator<Item=KV>,
+}
+
+impl Iterator for Until {
+    type Item = KV;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let x = self.underlying.next()?;
+        match x == self.until_key {
+            True => Some(x),
+        }
+    }
+}
 
 pub struct Rocks {
     db: rocksdb::DB,
@@ -17,8 +37,9 @@ impl Rocks {
     }
 }
 
+
 impl Storage for Rocks {
-    fn get(&self, s: &str) -> Result<Option<String>, Error> {
+    fn get(&self, s: String) -> Result<Option<String>, Error> {
         let result = self.db.get(s)?;
 
         let b = result.and_then(|r| match String::from_utf8(r) {
@@ -29,57 +50,44 @@ impl Storage for Rocks {
         Ok(b)
     }
 
-    fn put(&self, k: &str, v: &str) -> Result<(), Error> {
+    fn put(&self, k: String, v: String) -> Result<(), Error> {
         self.db.put(k, v)
             .or_else(|x| bail!(x))
     }
 
-    fn since(&self, k: &str) -> Result<Box<SledgeIterator>, Error> {
+    fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Forward));
-        let converted_to_string = db_iter
-            .filter_map(|(x, y)| {
-                return match convert_vec_pairs(x.into_vec(), y.into_vec()) {
-                    Err(e) => print_err_and_none!(e),
-                    Ok(pair) => Some(pair),
-                };
-            });
-
-        Ok(Box::new(converted_to_string))
+        Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn since_until(&self, k: &str, k2: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error> {
-        unimplemented!()
+    fn since_until(&self, k: String, k2: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+
+        let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
+                                                                   rocksdb::Direction::Forward));
+        Ok(Box::new(Rocks::simple_iterator(db_iter).take_while(move |x| x.key != k2)))
     }
 
-    fn reverse(&self, k: &str) -> Result<Box<SledgeIterator>, Error> {
-//        let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
-//                                                                   rocksdb::Direction::Reverse));
-        unimplemented!()
+    fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
+        let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
+                                                                   rocksdb::Direction::Reverse));
+        Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn reverse_until(&self, k: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, k: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 }
 
 impl Rocks {
-//
-//    fn iter_to_sledge_iterator(iter: DBIterator)-> Box<SledgeIterator> {
-//        Box::new(iter.filter_map(|(x, y)| {
-//            return match convert_vec_pairs(x.into_vec(), y.into_vec()) {
-//                Err(e) => print_err_and_none!(e),
-//                Ok(pair) => Some(pair),
-//            };
-//        }))
-//    }
-
-//    fn new_bound(b: Bound) -> (){
-//        match b {
-//            Limit(n: u32) => (),
-//            Key(s: String) => (),
-//            KeyEqualsValue(kv: KV) => (),
-//            Infinite => (),
-//        }
-//    }
+    fn simple_iterator(iter: DBIterator) -> FilterMap<DBIterator, fn((Box<[u8]>, Box<[u8]>)) -> Option<KV>> {
+        iter.filter_map(Rocks::tuplebox_to_maybe_kv)
+    }
+    fn tuplebox_to_maybe_kv(z: (Box<[u8]>, Box<[u8]>)) -> Option<KV> {
+        let (x, y) = (z.0, z.1);
+        return match convert_vec_pairs(x.into_vec(), y.into_vec()) {
+            Err(e) => print_err_and_none!(e),
+            Ok(pair) => Some(pair),
+        };
+    }
 }

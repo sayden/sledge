@@ -24,20 +24,20 @@ impl Sled {
 
 
 impl Storage for Sled {
-    fn get(&self, s: &str) -> Result<Option<String>, Error> {
+    fn get(&self, s: String) -> Result<Option<String>, Error> {
 //        let db_result = self.db.get(s).or_else(|e| bail!(e)).unwrap();
         let db_result = self.db.get(s)?;
         let result = Sled::parse_potential_value(&db_result);
         result
     }
 
-    fn put(&self, k: &str, v: &str) -> Result<(), Error> {
-        self.db.insert(k, v)
+    fn put(&self, k: String, v: String) -> Result<(), Error> {
+        self.db.insert(k.as_bytes(), v.as_bytes())
             .and_then(|_| Ok(()))
             .or_else(|x| bail!(x))
     }
 
-    fn since(&self, k: &str) -> Result<Box<SledgeIterator>, Error> {
+    fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
         let ranged_result = self.db.range(k..);
 
         let iter = ranged_result
@@ -52,15 +52,15 @@ impl Storage for Sled {
         Ok(Box::new(iter))
     }
 
-    fn since_until(&self, k: &str, k2: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error> {
+    fn since_until(&self, k: String, k2: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 
-    fn reverse(&self, k: &str) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 
-    fn reverse_until(&self, k: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, k: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 }

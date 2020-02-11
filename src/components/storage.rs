@@ -1,4 +1,6 @@
 use anyhow::Error;
+use std::fmt;
+use failure::_core::fmt::Formatter;
 
 pub(crate) type SledgeIterator = dyn Iterator<Item=KV>;
 
@@ -6,6 +8,12 @@ pub(crate) type SledgeIterator = dyn Iterator<Item=KV>;
 pub struct KV {
     pub key: String,
     pub value: String,
+}
+
+impl fmt::Display for KV {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "Key: {}, Value: {}", self.key, self.value)
+    }
 }
 
 impl PartialEq for KV {
@@ -51,12 +59,12 @@ pub enum Options {
 * backwards("my_key", Bound::Key("stop_in_this_key"), Bound::KV(KV{key:"stop_if_this_key",value:"has_this_value"))
 */
 pub trait Storage {
-    fn get(&self, s: &str) -> Result<Option<String>, Error>;
-    fn put(&self, k: &str, v: &str) -> Result<(), Error>;
+    fn get(&self, s: String) -> Result<Option<String>, Error>;
+    fn put(&self, k: String, v: String) -> Result<(), Error>;
 
-    fn since(&self, k: &str) -> Result<Box<SledgeIterator>, Error>;
-    fn since_until(&self, k: &str, k2: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error>;
+    fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
+    fn since_until(&self, k: String, k2: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error>;
 
-    fn reverse(&self, k: &str) -> Result<Box<SledgeIterator>, Error>;
-    fn reverse_until(&self, k: &str, opt: Box<[Options]>) -> Result<Box<SledgeIterator>, Error>;
+    fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
+    fn reverse_until(&self, k: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error>;
 }
