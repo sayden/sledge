@@ -35,6 +35,16 @@ impl Storage for Rocks {
             .or_else(|x| bail!(x))
     }
 
+    fn start(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+        let db_iter = self.db.iterator(rocksdb::IteratorMode::Start);
+        Ok(Box::new(Rocks::simple_iterator(db_iter)))
+    }
+
+    fn end(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+        let db_iter = self.db.iterator(rocksdb::IteratorMode::End);
+        Ok(Box::new(Rocks::simple_iterator(db_iter)))
+    }
+
     fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Forward));
@@ -53,8 +63,10 @@ impl Storage for Rocks {
         Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn reverse_until(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
-        unimplemented!()
+    fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
+        let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k1.as_bytes(),
+                                                                   rocksdb::Direction::Reverse));
+        Ok(Box::new(Rocks::simple_iterator(db_iter).take_while(move |x| x.key != k2)))
     }
 }
 

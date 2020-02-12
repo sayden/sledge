@@ -11,9 +11,9 @@ exclude = ["benchmarks", "examples", "scripts"]
 [dependencies]
 sled = "0.31.0"
 anyhow = "1.0.26"
+serde_json = "1.0"
 
 [dependencies.rocksdb]
 default-features = false
 features = ["lz4"]
 version = "0.13.0"
-

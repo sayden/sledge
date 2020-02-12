@@ -35,11 +35,14 @@ pub trait Storage {
     fn get(&self, s: String) -> Result<Option<String>, Error>;
     fn put(&mut self, k: String, v: String) -> Result<(), Error>;
 
+    fn start(&self) -> Result<Box<SledgeIterator>, Error>;
+    fn end(&self) -> Result<Box<SledgeIterator>, Error>;
+
     fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
-    fn since_until(&self, k: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
+    fn since_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
 
     fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
-    fn reverse_until(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
+    fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
 }
 
 pub fn get_storage(s: &str, p: &str) -> Box<dyn Storage> {

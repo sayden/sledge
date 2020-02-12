@@ -1,5 +1,5 @@
 use anyhow::Error;
-use sled::{IVec};
+use sled::IVec;
 use crate::conversions::vector::convert_vec_pairs_u8;
 use crate::components::storage::{Storage, SledgeIterator};
 use crate::components::kv::KV;
@@ -37,6 +37,15 @@ impl Storage for Sled {
             .or_else(|x| bail!(x))
     }
 
+    fn start(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+        let ranged = self.db.scan_prefix("");
+        Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
+    }
+
+    fn end(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+        unimplemented!()
+    }
+
     fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
         let ranged = self.db.range(k..);
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
@@ -47,12 +56,14 @@ impl Storage for Sled {
         Ok(Box::new(result.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn reverse(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
-        unimplemented!()
+    fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
+        let ranged = self.db.range(k..).rev();
+        Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn reverse_until(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
-        unimplemented!()
+    fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
+        let ranged = self.db.range(k1..k2).rev();
+        Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 }
 

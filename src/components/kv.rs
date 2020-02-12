@@ -20,6 +20,13 @@ impl PartialEq<String> for KV {
     }
 }
 
+impl PartialEq<(String, String)> for KV {
+    fn eq(&self, x: &(String, String)) -> bool {
+        self.key == x.0 && self.value == x.1
+    }
+}
+
+
 impl PartialOrd for KV {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.key == other.key {

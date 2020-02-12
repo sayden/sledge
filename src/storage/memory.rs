@@ -32,26 +32,36 @@ impl Storage for Memory {
         Ok(())
     }
 
-    fn since(&self, _: String) -> Result<Box<SledgeIterator>, Error> {
-        let v = vec![1, 2, 3, 4, 5].into_iter();
-        Ok(Box::new(v.map(|x| (KV { key: format!("{}", x), value: format!("{}", x) }))))
+    fn start(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+        Ok(Box::new(self.v.clone().into_iter()))
+    }
+
+    fn end(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+        unimplemented!()
+    }
+
+    fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
+        Ok(Box::new(self.v.clone().into_iter().skip_while(move |x| *x != k)))
     }
 
     fn since_until(&self, _since_key: String, _to_key: String) -> Result<Box<SledgeIterator>, Error> {
         let res = self.v.clone().into_iter()
             .skip_while(|x| *x != "03".to_string())
-            .take(3)
-//            .until(Box::new(Until::new("04".to_string())))
-            ;
+            .take(3);
 
         Ok(Box::new(res))
     }
 
-    fn reverse(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
-        unimplemented!()
+    fn reverse(&self, k1: String) -> Result<Box<SledgeIterator>, Error> {
+        Ok(Box::new(self.v.clone().into_iter().rev().skip_while(move |x| *x != k1)))
     }
 
-    fn reverse_until(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
-        unimplemented!()
+    fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
+        let i = self.v.clone().into_iter()
+            .rev()
+            .skip_while(move |x| *x != k1)
+            .take_while(move |x| *x != k2);
+
+        Ok(Box::new(i))
     }
 }
