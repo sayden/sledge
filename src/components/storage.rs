@@ -1,50 +1,11 @@
 use anyhow::Error;
-use std::fmt;
-use std::fmt::Formatter;
+use crate::storage::sled::Sled;
+use crate::storage::rocks::Rocks;
+use crate::storage::void::Void;
+use crate::storage::memory::Memory;
+use crate::components::kv::KV;
 
-pub(crate) type SledgeIterator = dyn Iterator<Item=KV>;
-
-#[derive(Debug, Clone)]
-pub struct KV {
-    pub key: String,
-    pub value: String,
-}
-
-impl KV {
-    pub fn empty() -> Self {
-        KV { key: "".to_string(), value: "".to_string() }
-    }
-}
-
-impl fmt::Display for KV {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "Key: {}, Value: {}", self.key, self.value)
-    }
-}
-
-impl PartialEq for KV {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key && self.value == other.value
-    }
-}
-
-pub enum Options {
-    //Upper bounds
-    LimitTo(u32),
-    Until(String),
-    UntilKV(KV),
-
-    // Lower bounds
-    Skip(u32),
-    Since(String),
-    SinceKV(KV),
-
-    Infinite,
-    
-    ExcludeFirst,
-    ExcludeLast,
-}
-
+pub type SledgeIterator = dyn Iterator<Item=KV>;
 
 /**
 * Types of range operations:
@@ -75,8 +36,18 @@ pub trait Storage {
     fn put(&mut self, k: String, v: String) -> Result<(), Error>;
 
     fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
-    fn since_until(&self, k: String, k2: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error>;
+    fn since_until(&self, k: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
 
     fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
-    fn reverse_until(&self, k: String, opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error>;
+    fn reverse_until(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
+}
+
+pub fn get_storage(s: &str, p: &str) -> Box<dyn Storage> {
+    match s {
+        "sled" => Sled::new(p.to_string()),
+        "rocksdb" => Rocks::new(p.to_string()),
+        "void" => Void::new(),
+        "memory" => Memory::new(),
+        _ => panic!("storage '{}' not found", s),
+    }
 }

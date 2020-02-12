@@ -1,6 +1,6 @@
-use crate::components::storage::{Storage, Options, KV, SledgeIterator};
+use crate::components::storage::{Storage, SledgeIterator};
 use anyhow::Error;
-use crate::storage::options::UntilExt;
+use crate::components::kv::KV;
 
 
 pub struct Memory {
@@ -28,6 +28,7 @@ impl Storage for Memory {
     fn put(&mut self, k: String, v: String) -> Result<(), Error> {
         let kv = KV { key: k, value: v };
         self.v.push(kv);
+        self.v.sort();
         Ok(())
     }
 
@@ -36,15 +37,12 @@ impl Storage for Memory {
         Ok(Box::new(v.map(|x| (KV { key: format!("{}", x), value: format!("{}", x) }))))
     }
 
-    fn since_until(&self, _since_key: String, _to_key: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
-        let res = self.v.clone().into_iter().until(
-            KV::empty(),
-            2,
-            0,
-            "05".to_string(),
-            "".to_string(),
-            KV::empty()
-        );
+    fn since_until(&self, _since_key: String, _to_key: String) -> Result<Box<SledgeIterator>, Error> {
+        let res = self.v.clone().into_iter()
+            .skip_while(|x| *x != "03".to_string())
+            .take(3)
+//            .until(Box::new(Until::new("04".to_string())))
+            ;
 
         Ok(Box::new(res))
     }
@@ -53,7 +51,7 @@ impl Storage for Memory {
         unimplemented!()
     }
 
-    fn reverse_until(&self, _k: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 }

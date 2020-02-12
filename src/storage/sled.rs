@@ -1,7 +1,8 @@
 use anyhow::Error;
-use sled::IVec;
+use sled::{IVec};
 use crate::conversions::vector::convert_vec_pairs_u8;
-use crate::components::storage::{Storage, Options, SledgeIterator};
+use crate::components::storage::{Storage, SledgeIterator};
+use crate::components::kv::KV;
 
 pub struct Sled {
     db: sled::Db,
@@ -25,7 +26,6 @@ impl Sled {
 
 impl Storage for Sled {
     fn get(&self, s: String) -> Result<Option<String>, Error> {
-//        let db_result = self.db.get(s).or_else(|e| bail!(e)).unwrap();
         let db_result = self.db.get(s)?;
         let result = Sled::parse_potential_value(&db_result);
         result
@@ -38,29 +38,31 @@ impl Storage for Sled {
     }
 
     fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
-        let ranged_result = self.db.range(k..);
-
-        let iter = ranged_result
-            .filter_map(|item| {
-                let i = item.or_else(|e| bail!(e)).unwrap();
-                match convert_vec_pairs_u8(i.0.as_ref(), i.1.as_ref()) {
-                    Ok(s) => Some(s),
-                    Err(e) => print_err_and_none!(e),
-                }
-            });
-
-        Ok(Box::new(iter))
+        let ranged = self.db.range(k..);
+        Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn since_until(&self, _k: String, _k2: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
-        unimplemented!()
+    fn since_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
+        let result = self.db.range(k1..k2);
+        Ok(Box::new(result.filter_map(|x| Sled::parse_range(x))))
     }
 
     fn reverse(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
     }
 
-    fn reverse_until(&self, _k: String, _opt: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, _k: String) -> Result<Box<SledgeIterator>, Error> {
         unimplemented!()
+    }
+}
+
+impl Sled {
+    fn parse_range(item: Result<(IVec, IVec), sled::Error>) -> Option<KV> {
+        let i = item.or_else(|e| bail!(e)).unwrap();
+        let res: Option<KV> = match convert_vec_pairs_u8(i.0.as_ref(), i.1.as_ref()) {
+            Ok(s) => Some(s),
+            Err(e) => print_err_and_none!(e),
+        };
+        res
     }
 }

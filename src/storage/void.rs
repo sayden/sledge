@@ -1,4 +1,4 @@
-use crate::components::storage::{Storage, Options, SledgeIterator};
+use crate::components::storage::{Storage, SledgeIterator};
 use anyhow::Error;
 
 pub struct Void {}
@@ -22,7 +22,7 @@ impl Storage for Void {
         Ok(Box::new(vec![].into_iter()))
     }
 
-    fn since_until(&self, _: String, _: String, _: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+    fn since_until(&self, _: String, _: String) -> Result<Box<SledgeIterator>, Error> {
         Ok(Box::new(vec![].into_iter()))
     }
 
@@ -30,7 +30,7 @@ impl Storage for Void {
         Ok(Box::new(vec![].into_iter()))
     }
 
-    fn reverse_until(&self, _: String, _: Option<Vec<Options>>) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, _: String) -> Result<Box<SledgeIterator>, Error> {
         Ok(Box::new(vec![].into_iter()))
     }
 }

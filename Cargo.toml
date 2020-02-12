@@ -17,6 +17,3 @@ default-features = false
 features = ["lz4"]
 version = "0.13.0"
 
-[[example]]
-name = "main"
-

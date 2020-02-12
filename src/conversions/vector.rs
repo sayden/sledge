@@ -1,5 +1,5 @@
-use crate::components::storage::KV;
 use anyhow::Error;
+use crate::components::kv::KV;
 
 pub fn convert_vec_pairs(x: Vec<u8>, y: Vec<u8>) -> Result<KV, Error> {
     let x1 = String::from_utf8(x)?;

@@ -8,4 +8,4 @@ extern crate anyhow;
 
 pub mod components;
 pub mod storage;
-mod conversions;
+pub mod conversions;

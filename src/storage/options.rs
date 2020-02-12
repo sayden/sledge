@@ -1,57 +1,105 @@
-use crate::components::storage::KV;
+use crate::components::kv::KV;
 
-pub trait UntilExt: Iterator {
-    fn until(self, until_kv: KV, limit: u32, skip: u32, until_string: String, after_key: String, after_kv: KV) -> Until<Self>
-        where
-            Self: Sized,
-            Self: Iterator<Item=KV> {
-        Until::new(self, until_kv, limit, skip, until_string, after_key, after_kv)
+pub trait ProcessOrStop<X> where
+    X: PartialEq + Eq {
+    fn process_or_stop(&mut self, cur: X) -> Option<X>;
+}
+
+
+pub struct After<T> {
+    found: bool,
+    pub compared: T,
+}
+
+impl<T> After<T> {
+    pub fn new(compared: T) -> Self {
+        After { found: false, compared }
     }
 }
 
-#[derive(Debug)]
-pub struct Until<I: Iterator<Item=KV>> {
-    iter: I,
+impl<T, X> ProcessOrStop<X> for After<T>
+    where X: PartialEq<T> + Eq {
+    fn process_or_stop(&mut self, cur: X) -> Option<X> {
+        if self.found {
+            return Some(cur);
+        } else {
+            self.found = cur == self.compared;
+            if self.found {
+                return Some(cur);
+            }
+        }
 
+        None
+    }
+}
+
+
+pub struct Until<T> {
     stop: bool,
+    pub compared: T,
+}
 
-    after_key: String,
-    after_kv: KV,
-    found: bool,
+impl<T> Until<T> {
+    pub fn new(compared: T) -> Self {
+        Until { stop: false, compared }
+    }
+}
 
-    until_kv: KV,
-    until_key: String,
+impl<T, X> ProcessOrStop<X> for Until<T>
+    where X: PartialEq<T> + Eq {
+    fn process_or_stop(&mut self, cur: X) -> Option<X> {
+        if self.stop { return None; }
+        self.stop = cur == self.compared;
+        return Some(cur);
+    }
+}
+
+
+
+pub struct Limit<T> {
+    stop: bool,
+    pub compared: T,
 
     limit: u32,
     limit_total: u32,
-    stop_by_limit:bool,
-
-    skip: u32,
-    skipped_total: u32,
-
-    exclude_first: bool,
-    exclude_last: bool,
 }
 
-impl<I: Iterator<Item=KV>> Until<I> {
-    pub(super) fn new(iter: I, until_kv: KV, limit: u32, skip: u32, until_string: String, after_key: String, after_kv: KV) -> Until<I> {
-        Until {
-            iter,
-            until_kv,
-            stop: false,
-            limit,
-            limit_total: 0,
-            stop_by_limit: false,
-            skip,
-            skipped_total: 0,
-            exclude_first: false,
-            until_key: until_string,
-            found: false,
-            after_key,
-            after_kv,
-            exclude_last: false,
-        }
+impl<T> Limit<T> {
+    pub fn new(compared: T, limit: u32) -> Self {
+        Limit { stop: false, limit, limit_total: 0, compared }
     }
+}
+
+impl<T, X> ProcessOrStop<X> for Limit<T>
+    where X: PartialEq<T> + Eq {
+    fn process_or_stop(&mut self, cur: X) -> Option<X> {
+        if self.stop { return None; }
+        self.limit_total += 1;
+        self.stop = self.limit_total >= self.limit;
+        Some(cur)
+    }
+}
+
+
+
+pub trait UntilExt: Iterator {
+    fn until(self, processor: Box<dyn ProcessOrStop<KV>>) -> UntilIter<Self>
+        where
+            Self: Sized,
+            Self: Iterator<Item=KV> {
+        UntilIter::new(self, processor)
+    }
+}
+
+pub struct UntilIter<I: Iterator<Item=KV>> {
+    iter: I,
+    processor: Box<dyn ProcessOrStop<KV>>,
+
+}
+
+impl<I: Iterator<Item=KV>> UntilIter<I> {
+    pub(super) fn new(iter: I, processor: Box<dyn ProcessOrStop<KV>>) -> UntilIter<I> {
+        UntilIter { iter, processor} }
 }
 
 // LimitTo(u32)
@@ -63,91 +111,13 @@ impl<I: Iterator<Item=KV>> Until<I> {
 // UntilKV(KV)
 // Infinite
 
-impl<I: Iterator<Item=KV>> Iterator for Until<I> {
+impl<I: Iterator<Item=KV>> Iterator for UntilIter<I> {
     type Item = KV;
 
     #[inline]
     fn next(&mut self) -> Option<KV> {
-        let mut cur = self.iter.next()?;
-        if self.stop || self.stop_by_limit{
-            return None;
-        }
-
-        if self.limit != 0 {
-            cur = self.limit(cur)?
-        }
-        if self.skip != 0 {
-            cur = self.skip_first(cur)?
-        }
-        if !self.after_key.is_empty() {
-            cur = self.after_key(cur)?
-        }
-        if !self.after_kv.key.is_empty() {
-            cur = self.after_kv(cur)?
-        }
-        if !self.after_kv.key.is_empty() {
-            cur = self.after_key(cur)?
-        }
-        if !self.until_kv.key.is_empty() {
-            cur = self.until_kv(cur)?
-        }
-        if !self.until_key.is_empty() {
-            cur = self.until_key(cur)?
-        }
-
-        Some(cur)
-//        self.stop = self.until_kv.key != cur.key;
-//        Some(x)
-    }
-}
-
-impl<I: Iterator<Item=KV>> Until<I> {
-    pub fn after_kv(&mut self, cur: KV) -> Option<KV> {
-        self.found = self.after_kv.key == cur.key && self.after_kv.value == cur.value;
-
-        if self.found {
-            return Some(cur);
-        }
-
-        None
-    }
-    pub fn after_key(&mut self, cur: KV) -> Option<KV> {
-        if self.found {
-            return Some(cur);
-        } else {
-            self.found = self.after_key == cur.key;
-            if self.found {
-                return Some(cur)
-            }
-        }
-
-        None
-    }
-
-    pub fn skip_first(&mut self, cur: KV) -> Option<KV> {
-        self.skipped_total += 1;
-
-        if self.skipped_total >= self.skip {
-            return Some(cur);
-        }
-
-        None
-    }
-
-    pub fn limit(&mut self, cur: KV) -> Option<KV> {
-        self.limit_total += 1;
-        self.stop_by_limit = self.limit_total >= self.limit;
-        Some(cur)
-    }
-
-    pub fn until_key(&mut self, current: KV) -> Option<KV> {
-        self.stop = self.until_key == current.key;
-        return Some(current);
-    }
-
-    pub fn until_kv(&mut self, current: KV) -> Option<KV> {
-        self.stop = self.until_kv.key == current.key && self.until_kv.value == current.value;
-        return Some(current);
+        let cur = self.iter.next()?;
+        self.processor.process_or_stop(cur)
     }
 }
 
