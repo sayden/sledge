@@ -16,16 +16,14 @@ impl ModifierTrait for Append {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_field = v.get(&self.modifier.field);
 
-        self.exists(maybe_field,&self.modifier.field)?;
+        let value = match maybe_field {
+            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
+            Some(v) => v,
+        };
 
-        match maybe_field {
-            Some(value) => {
-                let new_value = format!("{}{}", value.as_str()?, self.append);
-                v[&self.modifier.field] = Value::from(new_value);
-                None
-            }
-            None => Some(anyhow!("value '{}' not found", self.modifier.field)),
-        }
+        let new_value = format!("{}{}", value.as_str()?, self.append);
+        v[&self.modifier.field] = Value::from(new_value);
+        None
     }
 }
 

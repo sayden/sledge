@@ -8,6 +8,10 @@ mod quick {
     use sledge::processors::join::Join;
     use sledge::processors::upper_lower_case::UpperLowercase;
     use sledge::processors::set::Set;
+    use sledge::processors::split::Split;
+    use sledge::processors::trim_spaces::TrimSpaces;
+    use sledge::processors::trim::Trim;
+    use sledge::processors::sort::Sort;
 
     #[test]
     fn test_after_key() {
@@ -44,6 +48,7 @@ mod quick {
         let data = r#"{
                     "name": "John Doe",
                     "age": 43,
+                    "delete":"this",
                     "phones": [
                       "+44 1234567",
                       "+44 2345678"
@@ -51,35 +56,66 @@ mod quick {
                     "phones_uk": [
                       "+44 1234567",
                       "+44 2345678"
-                    ]
+                    ],
+                    "to_sort": [4,3,8],
+                    "to_sort_s": ["were", "asdasd", "qweqw"]
                   }"#;
 
-        let mo = r#"[{
-                    "type": "remove",
-                    "field": "phones"
-                  },{
-                    "type": "remove",
-                    "field": "age"
-                  },{
-                    "type": "append",
-                    "field": "name",
-                    "append": " hello"
-                  },{
-                    "type": "rename",
-                    "field": "name",
-                    "new_name": "name_hello"
-                  },{
-                    "type": "join",
-                    "field": "phones_uk",
-                    "separator": ","
-                  },{
-                    "type": "lowercase",
-                    "field": "name_hello"
-                  },{
-                    "type": "set",
-                    "field": "my_field",
-                    "value": "my_value"
-                  }]"#;
+        let mo = r#"[
+            {
+                "type": "remove",
+                "field": "delete"
+            },
+            {
+                "type": "append",
+                "field": "name",
+                "append": " hello   "
+            },
+            {
+                "type": "rename",
+                "field": "name",
+                "new_name": "name_hello"
+            },
+            {
+                "type": "join",
+                "field": "phones_uk",
+                "separator": ","
+            },
+            {
+                "type": "lowercase",
+                "field": "name_hello"
+            },
+            {
+                "type": "set",
+                "field": "my_field",
+                "value": "my_value"
+            },
+            {
+                "type": "trim_space",
+                "field": "name_hello"
+            },
+            {
+                "type": "split",
+                "field": "name_hello",
+                "separator": " "
+            },
+            {
+                "type": "trim",
+                "field": "my_field",
+                "from": "right",
+                "total": 2
+            },
+            {
+                "type": "sort",
+                "field": "to_sort_s",
+                "descending": false
+            },
+            {
+                "type": "sort",
+                "field": "to_sort",
+                "descending": true
+            }
+        ]"#;
 
         let mut p: Value = serde_json::from_str(data).unwrap();
         let mutp = p.as_object_mut().unwrap();
@@ -91,62 +127,108 @@ mod quick {
             .fold(mutp, |acc, x| apply_modifier(acc, x));
 
         println!("{}", serde_json::to_string_pretty(res).unwrap());
-
-        let s = qwerq(str::to_lowercase, "Hello");
-        println!("{}", s)
-
-//        for x in  {
-//            println!("{:?}", x.unwrap().modify(mutp).unwrap())
-//        }
-    }
-
-    fn qwerq(f: fn(&str) -> String, s: &str) -> String {
-        f(s)
-//        str::to_lowercase("").to_string()
     }
 
     fn factory(v: &Value) -> Option<Box<dyn ModifierTrait>> {
         let type_ = v["type"].as_str()?;
         match type_ {
-            "remove" => {
-                let modifier = Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() };
-                Some(Box::new(Remove { modifier }))
-            }
-            "append" => {
-                Some(Box::new(Append {
-                    modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
-                    append: v["append"].as_str()?.to_string(),
-                }))
-            }
-            "rename" => {
-                Some(Box::new(Rename {
-                    modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
-                    rename: v["new_name"].as_str()?.to_string(),
-                }))
-            }
-            "join" => {
-                Some(Box::new(Join {
-                    modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
+            "remove" =>
+                Some(Box::new(Remove {
+                    modifier: Modifier {
+                        type_: type_.to_string(),
+                        field: v["field"].as_str()?.to_string(),
+                    }
+                })),
+            "append" => Some(Box::new(Append {
+                modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
+                append: v["append"].as_str()?.to_string(),
+            })),
+            "rename" => Some(Box::new(Rename {
+                modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
+                rename: v["new_name"].as_str()?.to_string(),
+            })),
+            "join" => Some(Box::new(Join {
+                modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
+                separator: v["separator"].as_str()?.to_string(),
+            })),
+            "lowercase" => Some(Box::new(
+                UpperLowercase {
+                    modifier: Modifier {
+                        type_: type_.to_string(),
+                        field: v["field"].as_str()?.to_string(),
+                    },
+                    f: str::to_lowercase,
+                })),
+            "uppercase" => Some(Box::new(
+                UpperLowercase {
+                    modifier: Modifier {
+                        type_: type_.to_string(),
+                        field: v["field"].as_str()?.to_string(),
+                    },
+                    f: str::to_uppercase,
+                })),
+            "split" => Some(Box::new(
+                Split {
+                    modifier: Modifier {
+                        type_: type_.to_string(),
+                        field: v["field"].as_str()?.to_string(),
+                    },
                     separator: v["separator"].as_str()?.to_string(),
-                }))
-            }
-            "lowercase" => {
+                })),
+            "trim_space" => Some(Box::new(
+                TrimSpaces {
+                    modifier: Modifier {
+                        type_: type_.to_string(),
+                        field: v["field"].as_str()?.to_string(),
+                    },
+                })),
+            "trim" => Some(Box::new(
+                Trim {
+                    modifier: Modifier {
+                        type_: type_.to_string(),
+                        field: v["field"].as_str()?.to_string(),
+                    },
+                    from: v["from"].as_str()?.to_string(),
+                    total: v["total"].as_i64()? as usize,
+                })),
+            "set" =>
                 Some(Box::new(
-                    UpperLowercase { modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() }, f: str::to_lowercase }))
-            }
-            "uppercase" => {
+                    Set {
+                        modifier: Modifier {
+                            type_: type_.to_string(),
+                            field: v["field"].as_str()?.to_string(),
+                        },
+                        value: v["value"].clone(),
+                    })),
+            "sort" =>
                 Some(Box::new(
-                    UpperLowercase { modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() }, f: str::to_uppercase }))
-            }
-            "set" => {
-                Some(Box::new(
-                    Set { modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() }, value: v["value"].clone() }))
-            }
+                    Sort {
+                        modifier: Modifier {
+                            type_: type_.to_string(),
+                            field: v["field"].as_str()?.to_string(),
+                        },
+                        descending: v["descending"].as_bool()?.clone(),
+                    })),
             a => {
                 println!("Modifier with type '{}' not found", a);
                 None
             }
         }
+    }
+
+    #[derive(Debug)]
+    pub enum Modifiers {
+        Append,
+        Join,
+        Lowercase,
+        Remove,
+        Rename,
+        Set,
+        Sort,
+        Split,
+        Trim,
+        TrimSpace,
+        Uppercase,
     }
 
     fn apply_modifier(acc: &mut Map<String, Value>, x: Box<dyn ModifierTrait>) -> &mut Map<String, Value> {

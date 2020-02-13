@@ -11,10 +11,4 @@ pub struct Modifier {
 
 pub trait ModifierTrait {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<Error>;
-    fn exists(&self, v: Option<&Value>, f: &String) -> Option<Error> {
-        match v {
-            None => Some(anyhow!("value '{}' not found", f)),
-            _ => None,
-        }
-    }
 }

@@ -16,9 +16,12 @@ impl ModifierTrait for Join {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_value = v.get(&self.modifier.field);
 
-        self.exists(maybe_value,&self.modifier.field)?;
+        let value = match maybe_value {
+            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
+            Some(v) => v,
+        };
 
-        let array = match maybe_value.unwrap() {
+        let array = match value {
             Value::Array(ar) => ar,
             _ => return Some(anyhow!("value '{}' is not an array", self.modifier.field))
         };

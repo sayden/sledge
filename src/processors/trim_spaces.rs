@@ -7,28 +7,32 @@ use serde::export::Formatter;
 use std::fmt::Error;
 
 #[derive(Debug)]
-pub struct Rename {
+pub struct TrimSpaces {
     pub modifier: Modifier,
-    pub rename: String,
 }
 
-impl ModifierTrait for Rename {
+impl ModifierTrait for TrimSpaces {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_value = v.get(&self.modifier.field);
+
         let value = match maybe_value {
             None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
             Some(v) => v,
         };
 
-        let new_value = value.clone();
-        v.remove(self.modifier.field.as_str())?;
-        v.insert(self.rename.clone(), new_value);
+        let s: &String = match value {
+            Value::String(x) => x,
+            _ => return Some(anyhow!("value '{}' is not an string", self.modifier.field))
+        };
+
+        v[self.modifier.field.as_str()] = Value::from(s.trim());
+
         None
     }
 }
 
-impl fmt::Display for Rename {
+impl fmt::Display for TrimSpaces {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "Rename '{}' to field: '{}'", self.rename, self.modifier.field)
+        write!(f, "TrimSpaces to field '{}'", self.modifier.field)
     }
 }
