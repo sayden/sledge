@@ -12,6 +12,7 @@ exclude = ["benchmarks", "examples", "scripts"]
 sled = "0.31.0"
 anyhow = "1.0.26"
 serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 
 [dependencies.rocksdb]
 default-features = false
