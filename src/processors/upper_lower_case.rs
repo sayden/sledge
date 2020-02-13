@@ -1,5 +1,5 @@
-use crate::processors::chain::ModifierTrait;
-use crate::processors::chain::*;
+use crate::processors::core::ModifierTrait;
+use crate::processors::core::*;
 
 use serde_json::{Map, Value};
 use std::fmt;

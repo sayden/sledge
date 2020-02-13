@@ -1,4 +1,4 @@
-use crate::processors::chain::{ModifierTrait, Modifier};
+use crate::processors::core::{ModifierTrait, Modifier};
 use serde_json::{Map, Value};
 use std::fmt;
 use serde::export::Formatter;
@@ -6,7 +6,7 @@ use std::fmt::Error;
 
 #[derive(Debug)]
 pub struct Remove {
-    pub modifier: Modifier
+    pub(crate) modifier: Modifier
 }
 
 impl ModifierTrait for Remove {

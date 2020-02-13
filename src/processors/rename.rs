@@ -1,5 +1,5 @@
-use crate::processors::chain::ModifierTrait;
-use crate::processors::chain::*;
+use crate::processors::core::ModifierTrait;
+use crate::processors::core::*;
 
 use serde_json::{Map, Value};
 use std::fmt;
@@ -23,6 +23,7 @@ impl ModifierTrait for Rename {
         let new_value = value.clone();
         v.remove(self.modifier.field.as_str())?;
         v.insert(self.rename.clone(), new_value);
+
         None
     }
 }

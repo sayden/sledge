@@ -1,6 +1,5 @@
-pub mod chain;
+pub mod core;
 
-//pub mod upper_lower_case;
 pub mod remove;
 pub mod upper_lower_case;
 pub mod join;
