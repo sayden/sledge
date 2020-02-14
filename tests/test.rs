@@ -2,7 +2,6 @@ use sledge::components::storage::Storage;
 use sledge::components::kv::KV;
 
 mod storage;
-mod conversions;
 
 
 pub fn test_items_sorted() -> Vec<(String, String)> {

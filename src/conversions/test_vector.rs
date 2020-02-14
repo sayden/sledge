@@ -1,6 +1,4 @@
-#[cfg(test)]
-use sledge::components::kv::KV;
-
+use crate::components::kv::KV;
 
 #[test]
 fn test_convert_vec_pairs_u8() {
