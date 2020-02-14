@@ -14,19 +14,19 @@ use crate::processors::sort::Sort;
 use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Modifier {
+pub struct Processor {
     #[serde(rename = "type")]
     pub type_: String,
     pub field: String,
 }
 
-pub trait ModifierTrait {
+pub trait Modifier {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<Error>;
 }
 
 
 #[derive(Debug)]
-pub enum ModifierType {
+pub enum ProcessorType {
     Append,
     Join,
     Lowercase,
@@ -40,121 +40,121 @@ pub enum ModifierType {
     Uppercase,
 }
 
-impl FromStr for ModifierType {
+impl FromStr for ProcessorType {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "append" => Ok(ModifierType::Append),
-            "join" => Ok(ModifierType::Join),
-            "lowercase" => Ok(ModifierType::Lowercase),
-            "remove" => Ok(ModifierType::Remove),
-            "rename" => Ok(ModifierType::Rename),
-            "set" => Ok(ModifierType::Set),
-            "sort" => Ok(ModifierType::Sort),
-            "split" => Ok(ModifierType::Split),
-            "trim" => Ok(ModifierType::Trim),
-            "trim_space" => Ok(ModifierType::TrimSpace),
-            "uppercase" => Ok(ModifierType::Uppercase),
+            "append" => Ok(ProcessorType::Append),
+            "join" => Ok(ProcessorType::Join),
+            "lowercase" => Ok(ProcessorType::Lowercase),
+            "remove" => Ok(ProcessorType::Remove),
+            "rename" => Ok(ProcessorType::Rename),
+            "set" => Ok(ProcessorType::Set),
+            "sort" => Ok(ProcessorType::Sort),
+            "split" => Ok(ProcessorType::Split),
+            "trim" => Ok(ProcessorType::Trim),
+            "trim_space" => Ok(ProcessorType::TrimSpace),
+            "uppercase" => Ok(ProcessorType::Uppercase),
             _ => Err(())
         }
     }
 }
 
-impl ToString for ModifierType {
+impl ToString for ProcessorType {
     fn to_string(&self) -> String {
         match self {
-            ModifierType::Append => "append".to_string(),
-            ModifierType::Join => "join".to_string(),
-            ModifierType::Lowercase => "lowercase".to_string(),
-            ModifierType::Remove => "remove".to_string(),
-            ModifierType::Rename => "rename".to_string(),
-            ModifierType::Set => "set".to_string(),
-            ModifierType::Sort => "sort".to_string(),
-            ModifierType::Split => "split".to_string(),
-            ModifierType::Trim => "trim".to_string(),
-            ModifierType::TrimSpace => "trim_space".to_string(),
-            ModifierType::Uppercase => "uppercase".to_string(),
+            ProcessorType::Append => "append".to_string(),
+            ProcessorType::Join => "join".to_string(),
+            ProcessorType::Lowercase => "lowercase".to_string(),
+            ProcessorType::Remove => "remove".to_string(),
+            ProcessorType::Rename => "rename".to_string(),
+            ProcessorType::Set => "set".to_string(),
+            ProcessorType::Sort => "sort".to_string(),
+            ProcessorType::Split => "split".to_string(),
+            ProcessorType::Trim => "trim".to_string(),
+            ProcessorType::TrimSpace => "trim_space".to_string(),
+            ProcessorType::Uppercase => "uppercase".to_string(),
         }
     }
 }
 
-pub fn factory(v: Value) -> Option<Box<dyn ModifierTrait>> {
-    let type_: ModifierType = v["type"].as_str()?.parse().ok()?;
+pub fn factory(v: Value) -> Option<Box<dyn Modifier>> {
+    let type_: ProcessorType = v["type"].as_str()?.parse().ok()?;
 
     match type_ {
-        ModifierType::Remove =>
+        ProcessorType::Remove =>
             Some(Box::new(Remove {
-                modifier: Modifier {
+                modifier: Processor {
                     type_: type_.to_string(),
                     field: v["field"].as_str()?.to_string(),
                 }
             })),
-        ModifierType::Append => Some(Box::new(Append {
-            modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
+        ProcessorType::Append => Some(Box::new(Append {
+            modifier: Processor { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
             append: v["append"].as_str()?.to_string(),
         })),
-        ModifierType::Rename => Some(Box::new(Rename {
-            modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
+        ProcessorType::Rename => Some(Box::new(Rename {
+            modifier: Processor { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
             rename: v["new_name"].as_str()?.to_string(),
         })),
-        ModifierType::Join => Some(Box::new(Join {
-            modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
+        ProcessorType::Join => Some(Box::new(Join {
+            modifier: Processor { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
             separator: v["separator"].as_str()?.to_string(),
         })),
-        ModifierType::Lowercase => Some(Box::new(
+        ProcessorType::Lowercase => Some(Box::new(
             UpperLowercase {
-                modifier: Modifier {
+                modifier: Processor {
                     type_: type_.to_string(),
                     field: v["field"].as_str()?.to_string(),
                 },
                 f: str::to_lowercase,
             })),
-        ModifierType::Uppercase => Some(Box::new(
+        ProcessorType::Uppercase => Some(Box::new(
             UpperLowercase {
-                modifier: Modifier {
+                modifier: Processor {
                     type_: type_.to_string(),
                     field: v["field"].as_str()?.to_string(),
                 },
                 f: str::to_uppercase,
             })),
-        ModifierType::Split => Some(Box::new(
+        ProcessorType::Split => Some(Box::new(
             Split {
-                modifier: Modifier {
+                modifier: Processor {
                     type_: type_.to_string(),
                     field: v["field"].as_str()?.to_string(),
                 },
                 separator: v["separator"].as_str()?.to_string(),
             })),
-        ModifierType::TrimSpace => Some(Box::new(
+        ProcessorType::TrimSpace => Some(Box::new(
             TrimSpaces {
-                modifier: Modifier {
+                modifier: Processor {
                     type_: type_.to_string(),
                     field: v["field"].as_str()?.to_string(),
                 },
             })),
-        ModifierType::Trim => Some(Box::new(
+        ProcessorType::Trim => Some(Box::new(
             Trim {
-                modifier: Modifier {
+                modifier: Processor {
                     type_: type_.to_string(),
                     field: v["field"].as_str()?.to_string(),
                 },
                 from: v["from"].as_str()?.to_string(),
                 total: v["total"].as_i64()? as usize,
             })),
-        ModifierType::Set =>
+        ProcessorType::Set =>
             Some(Box::new(
                 Set {
-                    modifier: Modifier {
+                    modifier: Processor {
                         type_: type_.to_string(),
                         field: v["field"].as_str()?.to_string(),
                     },
                     value: v["value"].clone(),
                 })),
-        ModifierType::Sort =>
+        ProcessorType::Sort =>
             Some(Box::new(
                 Sort {
-                    modifier: Modifier {
+                    modifier: Processor {
                         type_: type_.to_string(),
                         field: v["field"].as_str()?.to_string(),
                     },

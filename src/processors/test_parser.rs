@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::processors::parser::{Modifiers, parse_and_modify};
+use crate::processors::parser::{Processors, parse_and_modify};
 
 #[test]
 fn test_parser() {
@@ -63,7 +63,7 @@ fn test_parser() {
 
     let expected = r#"{"age":43,"my_field":"_value","name_hello":["john","doe","hello"],"phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#;
 
-    let mods = Modifiers::new(mo.to_string()).unwrap();
+    let mods = Processors::new(mo.to_string()).unwrap();
 
     for _ in 0..10 {
         let res = parse_and_modify(data, &mods);

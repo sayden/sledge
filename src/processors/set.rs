@@ -1,4 +1,4 @@
-use crate::processors::core::ModifierTrait;
+use crate::processors::core::Modifier;
 use crate::processors::core::*;
 
 use serde_json::{Map, Value};
@@ -8,11 +8,11 @@ use std::fmt::Error;
 
 #[derive(Debug)]
 pub struct Set {
-    pub modifier: Modifier,
+    pub modifier: Processor,
     pub value: Value,
 }
 
-impl ModifierTrait for Set {
+impl Modifier for Set {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         v.insert(self.modifier.field.clone(), self.value.clone());
 

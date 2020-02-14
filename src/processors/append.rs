@@ -1,4 +1,4 @@
-use crate::processors::core::ModifierTrait;
+use crate::processors::core::Modifier;
 use crate::processors::core::*;
 
 use serde_json::{Map, Value};
@@ -8,11 +8,11 @@ use std::fmt::Error;
 
 #[derive(Debug)]
 pub struct Append {
-    pub modifier: Modifier,
+    pub modifier: Processor,
     pub append: String,
 }
 
-impl ModifierTrait for Append {
+impl Modifier for Append {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_field = v.get(&self.modifier.field);
 

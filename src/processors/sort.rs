@@ -1,4 +1,4 @@
-use crate::processors::core::ModifierTrait;
+use crate::processors::core::Modifier;
 use crate::processors::core::*;
 
 use serde_json::{Map, Value};
@@ -7,11 +7,11 @@ use std::fmt::{Error, Formatter};
 
 #[derive(Debug)]
 pub struct Sort {
-    pub modifier: Modifier,
+    pub modifier: Processor,
     pub descending: bool,
 }
 
-impl ModifierTrait for Sort {
+impl Modifier for Sort {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_value = v.get(&self.modifier.field);
 

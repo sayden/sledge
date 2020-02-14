@@ -1,4 +1,4 @@
-use crate::processors::core::ModifierTrait;
+use crate::processors::core::Modifier;
 use crate::processors::core::*;
 
 use serde_json::{Map, Value};
@@ -8,10 +8,10 @@ use std::fmt::Error;
 
 #[derive(Debug)]
 pub struct TrimSpaces {
-    pub modifier: Modifier,
+    pub modifier: Processor,
 }
 
-impl ModifierTrait for TrimSpaces {
+impl Modifier for TrimSpaces {
     fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_value = v.get(&self.modifier.field);
 
