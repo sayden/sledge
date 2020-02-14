@@ -1,7 +1,5 @@
 #[cfg(test)]
-use crate::processors::parser::{Modifiers, parse2};
-#[cfg(test)]
-use serde_json::{Value, Map};
+use crate::processors::parser::{Modifiers, parse_and_modify};
 
 #[test]
 fn test_parser() {
@@ -67,11 +65,8 @@ fn test_parser() {
 
     let mods = Modifiers::new(mo.to_string()).unwrap();
 
-    let mut p: Value = serde_json::from_str(data).unwrap();    //serde Result
-    let mutp = p.as_object_mut().unwrap();
-
     for _ in 0..10 {
-        let res = parse2(mutp.clone(), mods.as_ref());
-        assert_eq!(expected,res.unwrap())
+        let res = parse_and_modify(data, &mods);
+        assert_eq!(expected, res.unwrap())
     }
 }
