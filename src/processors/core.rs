@@ -26,7 +26,7 @@ pub trait ModifierTrait {
 
 
 #[derive(Debug)]
-pub enum Modifiers {
+pub enum ModifierType {
     Append,
     Join,
     Lowercase,
@@ -40,68 +40,69 @@ pub enum Modifiers {
     Uppercase,
 }
 
-impl FromStr for Modifiers {
+impl FromStr for ModifierType {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "append" => Ok(Modifiers::Append),
-            "join" => Ok(Modifiers::Join),
-            "lowercase" => Ok(Modifiers::Lowercase),
-            "remove" => Ok(Modifiers::Remove),
-            "rename" => Ok(Modifiers::Rename),
-            "set" => Ok(Modifiers::Set),
-            "sort" => Ok(Modifiers::Sort),
-            "split" => Ok(Modifiers::Split),
-            "trim" => Ok(Modifiers::Trim),
-            "trim_space" => Ok(Modifiers::TrimSpace),
-            "uppercase" => Ok(Modifiers::Uppercase),
+            "append" => Ok(ModifierType::Append),
+            "join" => Ok(ModifierType::Join),
+            "lowercase" => Ok(ModifierType::Lowercase),
+            "remove" => Ok(ModifierType::Remove),
+            "rename" => Ok(ModifierType::Rename),
+            "set" => Ok(ModifierType::Set),
+            "sort" => Ok(ModifierType::Sort),
+            "split" => Ok(ModifierType::Split),
+            "trim" => Ok(ModifierType::Trim),
+            "trim_space" => Ok(ModifierType::TrimSpace),
+            "uppercase" => Ok(ModifierType::Uppercase),
             _ => Err(())
         }
     }
 }
 
-impl ToString for Modifiers {
+impl ToString for ModifierType {
     fn to_string(&self) -> String {
         match self {
-            Modifiers::Append => "append".to_string(),
-            Modifiers::Join => "join".to_string(),
-            Modifiers::Lowercase => "lowercase".to_string(),
-            Modifiers::Remove => "remove".to_string(),
-            Modifiers::Rename => "rename".to_string(),
-            Modifiers::Set => "set".to_string(),
-            Modifiers::Sort => "sort".to_string(),
-            Modifiers::Split => "split".to_string(),
-            Modifiers::Trim => "trim".to_string(),
-            Modifiers::TrimSpace => "trim_space".to_string(),
-            Modifiers::Uppercase => "uppercase".to_string(),
+            ModifierType::Append => "append".to_string(),
+            ModifierType::Join => "join".to_string(),
+            ModifierType::Lowercase => "lowercase".to_string(),
+            ModifierType::Remove => "remove".to_string(),
+            ModifierType::Rename => "rename".to_string(),
+            ModifierType::Set => "set".to_string(),
+            ModifierType::Sort => "sort".to_string(),
+            ModifierType::Split => "split".to_string(),
+            ModifierType::Trim => "trim".to_string(),
+            ModifierType::TrimSpace => "trim_space".to_string(),
+            ModifierType::Uppercase => "uppercase".to_string(),
         }
     }
 }
 
-pub fn factory(v: &Value) -> Option<Box<dyn ModifierTrait>> {
-    let type_: Modifiers = v["type"].as_str()?.parse().ok()?;
+pub fn factory(v: Value) -> Option<Box<dyn ModifierTrait>> {
+    let type_: ModifierType = v["type"].as_str()?.parse().ok()?;
+
     match type_ {
-        Modifiers::Remove =>
+        ModifierType::Remove =>
             Some(Box::new(Remove {
                 modifier: Modifier {
                     type_: type_.to_string(),
                     field: v["field"].as_str()?.to_string(),
                 }
             })),
-        Modifiers::Append => Some(Box::new(Append {
+        ModifierType::Append => Some(Box::new(Append {
             modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
             append: v["append"].as_str()?.to_string(),
         })),
-        Modifiers::Rename => Some(Box::new(Rename {
+        ModifierType::Rename => Some(Box::new(Rename {
             modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
             rename: v["new_name"].as_str()?.to_string(),
         })),
-        Modifiers::Join => Some(Box::new(Join {
+        ModifierType::Join => Some(Box::new(Join {
             modifier: Modifier { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
             separator: v["separator"].as_str()?.to_string(),
         })),
-        Modifiers::Lowercase => Some(Box::new(
+        ModifierType::Lowercase => Some(Box::new(
             UpperLowercase {
                 modifier: Modifier {
                     type_: type_.to_string(),
@@ -109,7 +110,7 @@ pub fn factory(v: &Value) -> Option<Box<dyn ModifierTrait>> {
                 },
                 f: str::to_lowercase,
             })),
-        Modifiers::Uppercase => Some(Box::new(
+        ModifierType::Uppercase => Some(Box::new(
             UpperLowercase {
                 modifier: Modifier {
                     type_: type_.to_string(),
@@ -117,7 +118,7 @@ pub fn factory(v: &Value) -> Option<Box<dyn ModifierTrait>> {
                 },
                 f: str::to_uppercase,
             })),
-        Modifiers::Split => Some(Box::new(
+        ModifierType::Split => Some(Box::new(
             Split {
                 modifier: Modifier {
                     type_: type_.to_string(),
@@ -125,14 +126,14 @@ pub fn factory(v: &Value) -> Option<Box<dyn ModifierTrait>> {
                 },
                 separator: v["separator"].as_str()?.to_string(),
             })),
-        Modifiers::TrimSpace => Some(Box::new(
+        ModifierType::TrimSpace => Some(Box::new(
             TrimSpaces {
                 modifier: Modifier {
                     type_: type_.to_string(),
                     field: v["field"].as_str()?.to_string(),
                 },
             })),
-        Modifiers::Trim => Some(Box::new(
+        ModifierType::Trim => Some(Box::new(
             Trim {
                 modifier: Modifier {
                     type_: type_.to_string(),
@@ -141,7 +142,7 @@ pub fn factory(v: &Value) -> Option<Box<dyn ModifierTrait>> {
                 from: v["from"].as_str()?.to_string(),
                 total: v["total"].as_i64()? as usize,
             })),
-        Modifiers::Set =>
+        ModifierType::Set =>
             Some(Box::new(
                 Set {
                     modifier: Modifier {
@@ -150,7 +151,7 @@ pub fn factory(v: &Value) -> Option<Box<dyn ModifierTrait>> {
                     },
                     value: v["value"].clone(),
                 })),
-        Modifiers::Sort =>
+        ModifierType::Sort =>
             Some(Box::new(
                 Sort {
                     modifier: Modifier {
@@ -159,9 +160,5 @@ pub fn factory(v: &Value) -> Option<Box<dyn ModifierTrait>> {
                     },
                     descending: v["descending"].as_bool()?.clone(),
                 })),
-        _ => {
-            println!("Modifier with type '{}' not found", v["type"].as_str()?);
-            None
-        }
     }
 }
