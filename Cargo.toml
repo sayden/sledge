@@ -5,17 +5,21 @@ authors = ["sayden <mariocaster@gmail.com>"]
 edition = "2018"
 exclude = ["benchmarks", "examples", "scripts"]
 
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 
 [dependencies]
 sled = "0.31.0"
 anyhow = "1.0.26"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+warp = "0.2.1"
+log = "0.4.8"
+env_logger = "0.7.1"
+tracing = "0.1.12"
+tokio = { version = "0.2", features = ["macros"] }
 
 [dependencies.rocksdb]
 default-features = false
 features = ["lz4"]
 version = "0.13.0"
-simd-json = "0.2.3"

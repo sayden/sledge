@@ -11,6 +11,9 @@
   <component name="CargoProjects">
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/rocks/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/src/cmd/Server/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/src/server/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/server/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
     <list default="true" id="42e1d24f-e123-471b-838a-dc094a38be27" name="Default Changelist" comment="" />
@@ -43,22 +46,95 @@
   <component name="PropertiesComponent">
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
-    <property name="last_opened_file_path" value="$USER_HOME$/go/src/github.com/thehivecorporation/feeddb" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/../rust-ffi" />
     <property name="org.rust.cargo.project.model.PROJECT_DISCOVERY" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/examples/main.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/examples/main/src/main.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/server/src/main.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/bin/main.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/conversions/test_vector.rs" value="true" />
     <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/errors/errors.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/processors/chain.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/processors/join.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/processors/remove.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/processors/upper_lower_case.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/storage/test_kv.rs" value="true" />
     <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/src/storage/void.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/tests/conversions/test.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/tests/storage/mod.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/tests/storage/options.rs" value="true" />
+    <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/tests/storage/sled.rs" value="true" />
     <property name="org.rust.hideDetachedFileNotifications/home/mcastro/projects/sledge/tests/test.rs" value="true" />
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/src/components" />
+      <recent name="$PROJECT_DIR$/src" />
+      <recent name="$PROJECT_DIR$/src/conversions" />
       <recent name="$PROJECT_DIR$/src/storage" />
-      <recent name="$PROJECT_DIR$/src/errors" />
-      <recent name="$PROJECT_DIR$/src/strconv" />
-      <recent name="$PROJECT_DIR$/src/framework" />
+      <recent name="$PROJECT_DIR$/tests" />
+      <recent name="$PROJECT_DIR$/tests/storage" />
+    </key>
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/processors" />
+      <recent name="$PROJECT_DIR$/tests/storage" />
+      <recent name="$PROJECT_DIR$/tests/conversions" />
+      <recent name="$PROJECT_DIR$/src/storage" />
+      <recent name="$PROJECT_DIR$/src/bin" />
     </key>
   </component>
   <component name="RunManager" selected="Cargo Command.cargo run">
+    <configuration name="Test processors::test_parser::test_parser" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="channel" value="DEFAULT" />
+      <option name="command" value="test --package sledge --lib processors::test_parser::test_parser -- --exact" />
+      <option name="allFeatures" value="false" />
+      <option name="nocapture" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test quick::test_after_key" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="channel" value="DEFAULT" />
+      <option name="command" value="test --package sledge --test quick quick::test_after_key -- --exact" />
+      <option name="allFeatures" value="false" />
+      <option name="nocapture" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test quick::test_quick" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="channel" value="DEFAULT" />
+      <option name="command" value="test --package sledge --test quick quick::test_quick -- --exact" />
+      <option name="allFeatures" value="false" />
+      <option name="nocapture" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test quick::test_remove_modifier" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="channel" value="DEFAULT" />
+      <option name="command" value="test --package sledge --test quick quick::test_remove_modifier -- --exact" />
+      <option name="allFeatures" value="false" />
+      <option name="nocapture" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="cargo run" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="channel" value="DEFAULT" />
       <option name="command" value="run" />
@@ -68,7 +144,8 @@
       <option name="backtrace" value="SHORT" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <envs>
-        <env name="STORAGE" value="void" />
+        <env name="STORAGE" value="memory" />
+        <env name="RUST_LOG" value="debug" />
       </envs>
       <method v="2">
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
@@ -83,16 +160,28 @@
       <option name="backtrace" value="SHORT" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <envs>
-        <env name="STORAGE" value="void" />
+        <env name="STORAGE" value="memory" />
       </envs>
       <method v="2">
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
     <list>
-      <item itemvalue="Cargo Command.cargo run" />
       <item itemvalue="Cargo Command.cargo test" />
+      <item itemvalue="Cargo Command.cargo run" />
+      <item itemvalue="Cargo Command.Test quick::test_after_key" />
+      <item itemvalue="Cargo Command.Test quick::test_remove_modifier" />
+      <item itemvalue="Cargo Command.Test quick::test_quick" />
+      <item itemvalue="Cargo Command.Test processors::test_parser::test_parser" />
     </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Cargo Command.Test processors::test_parser::test_parser" />
+        <item itemvalue="Cargo Command.Test quick::test_quick" />
+        <item itemvalue="Cargo Command.Test quick::test_remove_modifier" />
+        <item itemvalue="Cargo Command.Test quick::test_after_key" />
+      </list>
+    </recent_temporary>
   </component>
   <component name="RustProjectSettings">
     <option name="toolchainHomeDirectory" value="/usr/bin" />
@@ -107,80 +196,107 @@
       <updated>1581165552062</updated>
       <workItem from="1581165553353" duration="9920000" />
       <workItem from="1581267787795" duration="13017000" />
-      <workItem from="1581326188307" duration="31839000" />
+      <workItem from="1581326188307" duration="33951000" />
+      <workItem from="1581412504506" duration="23128000" />
+      <workItem from="1581440171831" duration="8294000" />
+      <workItem from="1581456196465" duration="7110000" />
+      <workItem from="1581500151199" duration="3660000" />
+      <workItem from="1581512129104" duration="32016000" />
+      <workItem from="1581583930513" duration="21213000" />
+      <workItem from="1581613562434" duration="7118000" />
+      <workItem from="1581620697281" duration="2989000" />
+      <workItem from="1581672112248" duration="12783000" />
+      <workItem from="1581701049065" duration="4039000" />
+      <workItem from="1581761967197" duration="7086000" />
     </task>
     <servers />
   </component>
   <component name="WindowStateProjectService">
+    <state x="1423" y="201" width="800" height="684" key="#Notifications" timestamp="1581789775546">
+      <screen x="0" y="0" width="2560" height="1080" />
+    </state>
+    <state x="1423" y="201" width="800" height="684" key="#Notifications/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581789775546" />
     <state x="1393" y="123" width="615" height="840" key="#Unittests_in_tests" timestamp="1581328398399">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
     <state x="1393" y="123" width="615" height="840" key="#Unittests_in_tests/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581328398399" />
-    <state x="1373" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1581376383092">
+    <state x="1373" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1581791292468">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1373" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581376383092" />
-    <state x="1723" y="259" width="374" height="569" key="#com.intellij.ide.util.MemberChooser" timestamp="1581375897555">
+    <state x="1373" y="198" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581791292468" />
+    <state x="976" y="100" width="1464" height="880" key="#com.intellij.execution.junit2.states.ComparisonFailureState$DiffDialog" timestamp="1581548233560">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1723" y="259" width="374" height="569" key="#com.intellij.ide.util.MemberChooser/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581375897555" />
-    <state x="1537" y="288" width="524" height="510" key="#com.intellij.refactoring.safeDelete.UnsafeUsagesDialog" timestamp="1581372799255">
+    <state x="976" y="100" width="1464" height="880" key="#com.intellij.execution.junit2.states.ComparisonFailureState$DiffDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581548233560" />
+    <state x="1723" y="259" width="374" height="569" key="#com.intellij.ide.util.MemberChooser" timestamp="1581793151198">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1537" y="288" width="524" height="510" key="#com.intellij.refactoring.safeDelete.UnsafeUsagesDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581372799255" />
-    <state x="1652" y="301" width="515" height="484" key="EnvironmentVariablesDialog" timestamp="1581279507307">
+    <state x="1723" y="259" width="374" height="569" key="#com.intellij.ide.util.MemberChooser/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581793151198" />
+    <state x="1537" y="288" width="524" height="510" key="#com.intellij.refactoring.safeDelete.UnsafeUsagesDialog" timestamp="1581685122174">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1652" y="301" width="515" height="484" key="EnvironmentVariablesDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581279507307" />
-    <state x="1698" y="298" width="424" height="491" key="FileChooserDialogImpl" timestamp="1581179601055">
+    <state x="1537" y="288" width="524" height="510" key="#com.intellij.refactoring.safeDelete.UnsafeUsagesDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581685122174" />
+    <state x="1652" y="301" width="515" height="484" key="EnvironmentVariablesDialog" timestamp="1581790573475">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1698" y="298" width="424" height="491" key="FileChooserDialogImpl/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581179601055" />
-    <state width="1048" height="1015" key="GridCell.Tab.0.bottom" timestamp="1581376416091">
+    <state x="1652" y="301" width="515" height="484" key="EnvironmentVariablesDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581790573475" />
+    <state x="1698" y="298" width="424" height="491" key="FileChooserDialogImpl" timestamp="1581704716693">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state width="1048" height="1015" key="GridCell.Tab.0.bottom/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581376416091" />
+    <state x="1698" y="298" width="424" height="491" key="FileChooserDialogImpl/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581704716693" />
+    <state width="1106" height="1008" key="GridCell.Tab.0.bottom" timestamp="1581793544026">
+      <screen x="0" y="0" width="2560" height="1080" />
+    </state>
+    <state width="1106" height="1008" key="GridCell.Tab.0.bottom/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581793544026" />
     <state width="725" height="1015" key="GridCell.Tab.0.bottom/0.0.2560.1080/2560.0.2560.1440@2560.0.2560.1440" timestamp="1581349981738" />
-    <state width="1048" height="1015" key="GridCell.Tab.0.center" timestamp="1581376416091">
+    <state width="1106" height="1008" key="GridCell.Tab.0.center" timestamp="1581793544026">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state width="1048" height="1015" key="GridCell.Tab.0.center/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581376416091" />
+    <state width="1106" height="1008" key="GridCell.Tab.0.center/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581793544026" />
     <state width="725" height="1015" key="GridCell.Tab.0.center/0.0.2560.1080/2560.0.2560.1440@2560.0.2560.1440" timestamp="1581349981738" />
-    <state width="1048" height="1015" key="GridCell.Tab.0.left" timestamp="1581376416091">
+    <state width="1106" height="1008" key="GridCell.Tab.0.left" timestamp="1581793544026">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state width="1048" height="1015" key="GridCell.Tab.0.left/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581376416091" />
+    <state width="1106" height="1008" key="GridCell.Tab.0.left/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581793544026" />
     <state width="725" height="1015" key="GridCell.Tab.0.left/0.0.2560.1080/2560.0.2560.1440@2560.0.2560.1440" timestamp="1581349981738" />
-    <state width="1048" height="1015" key="GridCell.Tab.0.right" timestamp="1581376416091">
+    <state width="1106" height="1008" key="GridCell.Tab.0.right" timestamp="1581793544026">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state width="1048" height="1015" key="GridCell.Tab.0.right/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581376416091" />
+    <state width="1106" height="1008" key="GridCell.Tab.0.right/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581793544026" />
     <state width="725" height="1015" key="GridCell.Tab.0.right/0.0.2560.1080/2560.0.2560.1440@2560.0.2560.1440" timestamp="1581349981738" />
-    <state x="1533" y="270" width="540" height="524" key="StructurePopup" timestamp="1581357511673">
+    <state x="1533" y="270" width="540" height="524" key="StructurePopup" timestamp="1581696013574">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1533" y="270" width="540" height="524" key="StructurePopup/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581357511673" />
-    <state x="962" y="100" width="1498" height="880" key="com.intellij.history.integration.ui.views.FileHistoryDialog" timestamp="1581361115825">
+    <state x="1533" y="270" width="540" height="524" key="StructurePopup/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581696013574" />
+    <state x="962" y="100" width="1498" height="880" key="com.intellij.history.integration.ui.views.FileHistoryDialog" timestamp="1581595080539">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="962" y="100" width="1498" height="880" key="com.intellij.history.integration.ui.views.FileHistoryDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581361115825" />
-    <state x="1575" y="367" key="com.intellij.ide.util.TipDialog" timestamp="1581326188065">
+    <state x="962" y="100" width="1498" height="880" key="com.intellij.history.integration.ui.views.FileHistoryDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581595080539" />
+    <state x="1575" y="367" key="com.intellij.ide.util.TipDialog" timestamp="1581761968339">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1575" y="367" key="com.intellij.ide.util.TipDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581326188065" />
-    <state width="635" height="249" key="javadoc.popup.new" timestamp="1581364974084">
+    <state x="1575" y="367" key="com.intellij.ide.util.TipDialog/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581761968339" />
+    <state x="1488" y="158" width="683" height="771" key="com.intellij.openapi.editor.actions.MultiplePasteAction$ClipboardContentChooser" timestamp="1581599621877">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state width="635" height="249" key="javadoc.popup.new/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581364974084" />
+    <state x="1488" y="158" width="683" height="771" key="com.intellij.openapi.editor.actions.MultiplePasteAction$ClipboardContentChooser/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581599621877" />
+    <state x="1439" y="267" width="843" height="656" key="find.popup" timestamp="1581792860185">
+      <screen x="0" y="0" width="2560" height="1080" />
+    </state>
+    <state x="1439" y="267" width="843" height="656" key="find.popup/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581792860185" />
+    <state width="635" height="189" key="javadoc.popup.new" timestamp="1581792272581">
+      <screen x="0" y="0" width="2560" height="1080" />
+    </state>
+    <state width="635" height="189" key="javadoc.popup.new/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581792272581" />
     <state width="635" height="384" key="javadoc.popup.new/0.0.2560.1080/2560.0.2560.1440@2560.0.2560.1440" timestamp="1581348445023" />
-    <state x="1579" y="245" key="run.anything.popup" timestamp="1581372261137">
+    <state x="1579" y="245" key="run.anything.popup" timestamp="1581696284225">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1579" y="245" key="run.anything.popup/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581372261137" />
-    <state x="1578" y="239" width="672" height="678" key="search.everywhere.popup" timestamp="1581343217224">
+    <state x="1579" y="245" key="run.anything.popup/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581696284225" />
+    <state x="1578" y="239" width="672" height="678" key="search.everywhere.popup" timestamp="1581789818525">
       <screen x="0" y="0" width="2560" height="1080" />
     </state>
-    <state x="1578" y="239" width="672" height="678" key="search.everywhere.popup/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581343217224" />
+    <state x="1578" y="239" width="672" height="678" key="search.everywhere.popup/0.0.2560.1080/2560.0.2560.1440@0.0.2560.1080" timestamp="1581789818525" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
