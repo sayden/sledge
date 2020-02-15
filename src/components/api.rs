@@ -1,26 +1,21 @@
 use anyhow::Error;
 use crate::components::storage::Storage;
+use crate::storage::stats::Stats;
 
-
-pub trait App {
-    fn get_by_id(&self, k: String) -> Result<Option<String>, Error>;
-//    fn get_since(&self, k: &str, limit: u32) -> Result<Option<dyn Iterator>, failure::Error>;
+pub struct V1 {
+    pub storage: Box<dyn Storage>
 }
 
-struct V1 {
-    storage: Box<dyn Storage>
+pub fn new(f: Box<dyn Storage>) -> V1 {
+    return V1 { storage: f };
 }
 
-pub fn new(f: Box<dyn Storage>) -> Box<dyn App> {
-    return Box::new(V1 { storage: f });
-}
-
-impl App for V1 {
+impl V1 {
     fn get_by_id(&self, k: String) -> Result<Option<String>, anyhow::Error> {
         self.storage.get(k)
     }
 
-//    fn get_since(&self, k: &str, limit: u32) -> Result<Option<dyn Iterator<Item=_>>, AppError> {
-//        unimplemented!()
-//    }
+    pub(crate) fn stats(&self) -> Stats {
+        self.storage.stats()
+    }
 }

@@ -1,8 +1,9 @@
 use crate::components::storage::{Storage, SledgeIterator};
 use anyhow::Error;
 use crate::components::kv::KV;
+use crate::storage::stats::Stats;
 
-
+#[derive(Sync)]
 pub struct Memory {
     v: Vec<KV>
 }
@@ -63,5 +64,12 @@ impl Storage for Memory {
             .take_while(move |x| *x != k2);
 
         Ok(Box::new(i))
+    }
+
+    fn stats(&self) -> Stats {
+        Stats {
+            total_entries: self.v.len() as u128,
+            error: "".to_string()
+        }
     }
 }

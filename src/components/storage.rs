@@ -4,6 +4,7 @@ use crate::storage::rocks::Rocks;
 use crate::storage::void::Void;
 use crate::storage::memory::Memory;
 use crate::components::kv::KV;
+use crate::storage::stats::Stats;
 
 pub type SledgeIterator = dyn Iterator<Item=KV>;
 
@@ -43,6 +44,8 @@ pub trait Storage {
 
     fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
     fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
+
+    fn stats(&self) -> Stats;
 }
 
 pub fn get_storage(s: &str, p: &str) -> Box<dyn Storage> {

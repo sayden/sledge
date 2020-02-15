@@ -3,6 +3,7 @@ use sled::IVec;
 use crate::conversions::vector::convert_vec_pairs_u8;
 use crate::components::storage::{Storage, SledgeIterator};
 use crate::components::kv::KV;
+use crate::storage::stats::Stats;
 
 pub struct Sled {
     db: sled::Db,
@@ -64,6 +65,10 @@ impl Storage for Sled {
     fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
         let ranged = self.db.range(k1..k2).rev();
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
+    }
+
+    fn stats(&self) -> Stats {
+        unimplemented!()
     }
 }
 

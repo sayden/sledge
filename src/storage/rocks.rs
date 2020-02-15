@@ -5,6 +5,7 @@ use crate::conversions::vector::convert_vec_pairs;
 use crate::components::storage::{Storage, SledgeIterator};
 use std::iter::FilterMap;
 use crate::components::kv::KV;
+use crate::storage::stats::Stats;
 
 pub struct Rocks {
     db: rocksdb::DB,
@@ -67,6 +68,10 @@ impl Storage for Rocks {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k1.as_bytes(),
                                                                    rocksdb::Direction::Reverse));
         Ok(Box::new(Rocks::simple_iterator(db_iter).take_while(move |x| x.key != k2)))
+    }
+
+    fn stats(&self) -> Stats {
+        unimplemented!()
     }
 }
 

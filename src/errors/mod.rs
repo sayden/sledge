@@ -2,7 +2,7 @@
 macro_rules! print_err_and_none {
     ($e:expr) => {{
         {
-            println!("{}", $e);
+            error!("{}", $e);
             None
         }
     }}

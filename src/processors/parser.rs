@@ -3,6 +3,7 @@ use crate::processors::core::{factory, Modifier};
 use anyhow::Error;
 use std::ops::Deref;
 use std::borrow::BorrowMut;
+use log::error;
 
 pub struct Processors(Vec<Box<dyn Modifier>>);
 
@@ -34,7 +35,7 @@ pub fn parse_and_modify(json_data: &str, mods: &Processors) -> Result<String, Er
     for modifier in mods.iter() {
         match modifier.modify(mutp.borrow_mut()) {
             Some(err) => {
-                println!("error trying to modify json '{}'", err);
+                warn!("error trying to modify json '{}'", err);
             }
             _ => (),
         }
