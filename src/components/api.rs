@@ -11,11 +11,17 @@ pub fn new(f: Box<dyn Storage>) -> V1 {
 }
 
 impl V1 {
-    fn get_by_id(&self, k: String) -> Result<Option<String>, anyhow::Error> {
+    pub fn get_by_id(&self, k: String) -> Result<Option<String>, anyhow::Error> {
         self.storage.get(k)
     }
 
-    pub(crate) fn stats(&self) -> Stats {
+    pub fn stats(&self) -> Stats {
         self.storage.stats()
+    }
+
+    pub fn new(s: Box<dyn Storage + Sync + Send>) -> Self {
+        V1{
+            storage: s,
+        }
     }
 }

@@ -3,7 +3,6 @@ use anyhow::Error;
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 
-#[derive(Sync)]
 pub struct Memory {
     v: Vec<KV>
 }

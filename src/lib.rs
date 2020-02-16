@@ -1,5 +1,4 @@
-#![feature(try_trait)]
-
+#![feature(box_syntax)]
 #[macro_use]
 extern crate log;
 
@@ -16,4 +15,3 @@ pub mod components;
 pub mod storage;
 pub mod conversions;
 pub mod processors;
-mod main;
