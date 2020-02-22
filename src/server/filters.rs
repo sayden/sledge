@@ -5,6 +5,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::convert::Infallible;
 use warp::http::StatusCode;
+use serde::{Serialize, Deserialize};
+
+
+#[derive(Serialize, Deserialize)]
+pub struct InsertReq {
+    pub(crate) key: String,
+    pub(crate) value: String
+}
 
 /// Filters combined.
 pub fn all(db: Arc<Mutex<V1>>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
@@ -32,9 +40,9 @@ pub fn status(db: Arc<Mutex<V1>>) -> impl Filter<Extract=impl Reply, Error=Rejec
 pub fn insert(db: Arc<Mutex<V1>>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
     warp::path!("insert")
         .and(warp::post())
+        .and(with_db(db))
         .and(warp::body::json())
-//        .and(with_db(db))
-        .and_then(|db| handlers::insert(db))
+        .and_then(|db, doc:InsertReq| handlers::insert(db, doc))
 }
 
 
