@@ -6,7 +6,7 @@ use crate::storage::stats::Stats;
 pub struct Void {}
 
 impl Void {
-    pub fn new() -> Box<dyn Storage> {
+    pub fn new() -> Box<dyn Storage + Send + Sync> {
         Box::new(Void {})
     }
 }

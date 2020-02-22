@@ -8,7 +8,7 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn new<'a>() -> Box<dyn Storage> {
+    pub fn new<'a>() -> Box<dyn Storage + Send + Sync> {
         let v: Vec<KV> = Vec::new();
         Box::new(Memory { v })
     }

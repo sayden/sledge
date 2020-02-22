@@ -3,7 +3,6 @@ use crate::processors::core::{factory, Modifier};
 use anyhow::Error;
 use std::ops::Deref;
 use std::borrow::BorrowMut;
-use log::error;
 
 pub struct Processors(Vec<Box<dyn Modifier>>);
 

@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use warp::reply::Response;
 
 #[derive(Serialize, Deserialize)]
 pub struct Stats {

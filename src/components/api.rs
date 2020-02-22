@@ -1,12 +1,11 @@
-use anyhow::Error;
 use crate::components::storage::Storage;
 use crate::storage::stats::Stats;
 
 pub struct V1 {
-    pub storage: Box<dyn Storage>
+    pub storage: Box<dyn Storage + Send + Sync>
 }
 
-pub fn new(f: Box<dyn Storage>) -> V1 {
+pub fn new(f: Box<dyn Storage + Send + Sync>) -> V1 {
     return V1 { storage: f };
 }
 
@@ -19,7 +18,7 @@ impl V1 {
         self.storage.stats()
     }
 
-    pub fn new(s: Box<dyn Storage + Sync + Send>) -> Self {
+    pub fn new(s: Box<dyn Storage + Send + Sync>) -> Self {
         V1{
             storage: s,
         }

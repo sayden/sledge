@@ -10,7 +10,7 @@ pub struct Sled {
 }
 
 impl Sled {
-    pub fn new(p: String) -> Box<dyn Storage> {
+    pub fn new(p: String) -> Box<dyn Storage + Send + Sync> {
         let db = sled::open(p).unwrap();
         Box::new(Sled { db })
     }

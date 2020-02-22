@@ -12,7 +12,7 @@ pub struct Rocks {
 }
 
 impl Rocks {
-    pub fn new(path: String) -> Box<dyn Storage> {
+    pub fn new(path: String) -> Box<dyn Storage + Send + Sync> {
         let db = DB::open_default(path).unwrap();
         Box::new(Rocks { db })
     }
