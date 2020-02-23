@@ -33,17 +33,17 @@ pub type SledgeIterator = dyn Iterator<Item=KV>;
 * backwards("my_key", Bound::Key("stop_in_this_key"), Bound::KV(KV{key:"stop_if_this_key",value:"has_this_value"))
 */
 pub trait Storage {
-    fn get(&self, s: String) -> Result<Option<String>, Error>;
-    fn put(&mut self, k: String, v: String) -> Result<(), Error>;
+    fn get(&self, keyspace: Option<String>, s: String) -> Result<Option<String>, Error>;
+    fn put(&mut self, keyspace: Option<String>, k: String, v: String) -> Result<(), Error>;
 
-    fn start(&self) -> Result<Box<SledgeIterator>, Error>;
-    fn end(&self) -> Result<Box<SledgeIterator>, Error>;
+    fn start(&self, keyspace: Option<String>) -> Result<Box<SledgeIterator>, Error>;
+    fn end(&self, keyspace: Option<String>) -> Result<Box<SledgeIterator>, Error>;
 
-    fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
-    fn since_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
+    fn since(&self, keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error>;
+    fn since_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
 
-    fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error>;
-    fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
+    fn reverse(&self, keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error>;
+    fn reverse_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error>;
 
     fn stats(&self) -> Stats;
 }

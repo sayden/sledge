@@ -23,4 +23,8 @@ impl V1 {
             storage: s,
         }
     }
+
+    pub fn storage(&self) -> Box<dyn Storage + Send + Sync> {
+        self.storage
+    }
 }

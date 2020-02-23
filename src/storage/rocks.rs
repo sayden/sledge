@@ -20,7 +20,7 @@ impl Rocks {
 
 
 impl Storage for Rocks {
-    fn get(&self, s: String) -> Result<Option<String>, Error> {
+    fn get(&self, keyspace: Option<String>, s: String) -> Result<Option<String>, Error> {
         let result = self.db.get(s)?;
 
         let b = result.and_then(|r| match String::from_utf8(r) {
@@ -31,40 +31,40 @@ impl Storage for Rocks {
         Ok(b)
     }
 
-    fn put(&mut self, k: String, v: String) -> Result<(), Error> {
+    fn put(&mut self, keyspace: Option<String>, k: String, v: String) -> Result<(), Error> {
         self.db.put(k, v)
             .or_else(|x| bail!(x))
     }
 
-    fn start(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn start(&self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::Start);
         Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn end(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn end(&self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::End);
         Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
+    fn since(&self, keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Forward));
         Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn since_until(&self, k: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
+    fn since_until(&self, keyspace: Option<String>, k: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Forward));
         Ok(Box::new(Rocks::simple_iterator(db_iter).take_while(move |x| x.key != k2)))
     }
 
-    fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse(&self, keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Reverse));
         Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
 
-    fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k1.as_bytes(),
                                                                    rocksdb::Direction::Reverse));
         Ok(Box::new(Rocks::simple_iterator(db_iter).take_while(move |x| x.key != k2)))

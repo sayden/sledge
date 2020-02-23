@@ -26,43 +26,43 @@ impl Sled {
 
 
 impl Storage for Sled {
-    fn get(&self, s: String) -> Result<Option<String>, Error> {
+    fn get(&self, keyspace: Option<String>, s: String) -> Result<Option<String>, Error> {
         let db_result = self.db.get(s)?;
         let result = Sled::parse_potential_value(&db_result);
         result
     }
 
-    fn put(&mut self, k: String, v: String) -> Result<(), Error> {
+    fn put(&mut self, keyspace: Option<String>, k: String, v: String) -> Result<(), Error> {
         self.db.insert(k.as_bytes(), v.as_bytes())
             .and_then(|_| Ok(()))
             .or_else(|x| bail!(x))
     }
 
-    fn start(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn start(&self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
         let ranged = self.db.scan_prefix("");
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn end(&self) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn end(&self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
         unimplemented!()
     }
 
-    fn since(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
+    fn since(&self, keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
         let ranged = self.db.range(k..);
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn since_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
+    fn since_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
         let result = self.db.range(k1..k2);
         Ok(Box::new(result.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn reverse(&self, k: String) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse(&self, keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
         let ranged = self.db.range(k..).rev();
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn reverse_until(&self, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
         let ranged = self.db.range(k1..k2).rev();
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }

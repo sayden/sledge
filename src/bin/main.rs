@@ -1,19 +1,15 @@
-use warp::{Filter, Rejection, Reply};
-use log::info;
-use std::sync::Arc;
-use sledge::components::api::V1;
+use warp::{Filter};
+use std::sync::{Arc};
 use sledge::components::storage::get_storage;
-use std::borrow::Borrow;
-use std::fs::FileType;
 use sledge::server::filters;
-use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() {
     env_logger::init();
 
-    let app = Arc::new(Mutex::new(V1::new(get_storage(env!("STORAGE"), "/tmp/storage"))));
-    let api = filters::all(app.clone());
+//    let app = Arc::new(Mutex::new(V1::new(get_storage(env!("STORAGE"), "/tmp/storage"))));
+    let db = Arc::new(tokio::sync::Mutex::new(get_storage(env!("STORAGE"), "/tmp/storage")));
+    let api = filters::all(db);
 
     let routes = api.with(warp::log("sledge"));
 

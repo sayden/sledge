@@ -19,9 +19,9 @@ pub fn test_items() -> Vec<(String, String)> {
          ("6".to_string(), "rocco".to_string())]
 }
 
-pub fn do_insertions(st: &mut Box<dyn Storage + Send + Sync>) {
+pub fn do_insertions(keyspace: Option<String>, st: &mut Box<dyn Storage + Send + Sync>) {
     for test_item in test_items() {
-        st.put(test_item.0, test_item.1).unwrap()
+        st.put(keyspace.clone(), test_item.0, test_item.1).unwrap()
     }
 }
 
