@@ -1,70 +1,89 @@
-use anyhow::Error;
-use sled::IVec;
+use sled::{IVec, Tree};
 use crate::conversions::vector::convert_vec_pairs_u8;
-use crate::components::storage::{Storage, SledgeIterator};
+use crate::components::storage::{Storage, SledgeIterator, Error};
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
+use std::ops::Deref;
+use std::env;
 
 pub struct Sled {
     db: sled::Db,
+    create_tree_if_missing: bool,
 }
 
 impl Sled {
     pub fn new(p: String) -> Box<dyn Storage + Send + Sync> {
         let db = sled::open(p).unwrap();
-        Box::new(Sled { db })
-    }
-
-    fn parse_potential_value(i: &Option<IVec>) -> Result<Option<String>, Error> {
-        let value = i.as_ref().ok_or(anyhow::anyhow!("value not found"))?;
-        return match std::str::from_utf8(value.as_ref()) {
-            Ok(x) => Ok(Some(x.to_string())),
-            Err(e) => bail!(e),
+        let create_tree = match env::var("SLEDDB_CREATE_TREE_IF_MISSING") {
+            Ok(res) => res == "true",
+            _ => true,
         };
+        Box::new(Sled { db, create_tree_if_missing: create_tree })
     }
 }
 
 
 impl Storage for Sled {
-    fn get(&self, keyspace: Option<String>, s: String) -> Result<Option<String>, Error> {
-        let db_result = self.db.get(s)?;
-        let result = Sled::parse_potential_value(&db_result);
-        result
+    fn get(&self, maybe_keyspace: Option<String>, s: String) -> Result<Option<String>, Error> {
+        let db_result = self.db.get(s.clone())
+            .or_else(|err| Err(Error::Db(err.to_string())))?;
+
+        match db_result {
+            Some(v) => std::str::from_utf8(v.as_ref())
+                .or_else(|err| Err(Error::Parse(err)))
+                .and_then(|res| Ok(Some(res.to_string()))),
+            None => return Err(Error::ValueNotFound(s)),
+        }
     }
 
-    fn put(&mut self, keyspace: Option<String>, k: String, v: String) -> Result<(), Error> {
-        self.db.insert(k.as_bytes(), v.as_bytes())
+    fn put(&mut self, maybe_keyspace: Option<String>, k: String, v: String) -> Result<(), Error> {
+        let tree = self.get_tree(maybe_keyspace)?;
+
+        tree.insert(k.as_bytes(), v.as_bytes())
             .and_then(|_| Ok(()))
-            .or_else(|x| bail!(x))
+            .or_else(|err| Err(Error::Put(err.to_string())))
     }
 
-    fn start(&self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
-        let ranged = self.db.scan_prefix("");
+    fn start(&self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+        let tree = self.get_tree(maybe_keyspace)?;
+        let ranged = tree.scan_prefix("");
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn end(&self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn end(&self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
         unimplemented!()
     }
 
-    fn since(&self, keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
-        let ranged = self.db.range(k..);
+    fn since(&self, maybe_keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
+        let tree = self.get_tree(maybe_keyspace)?;
+        let ranged = tree.range(k..);
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn since_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
-        let result = self.db.range(k1..k2);
+    fn since_until(&self, maybe_keyspace: Option<String>, k1: String, k2: String)
+                   -> Result<Box<SledgeIterator>, Error> {
+        let tree = self.get_tree(maybe_keyspace)?;
+        let result = tree.range(k1..k2);
         Ok(Box::new(result.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn reverse(&self, keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
-        let ranged = self.db.range(k..).rev();
+    fn reverse(&self, maybe_keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
+        let tree = self.get_tree(maybe_keyspace)?;
+        let ranged = tree.range(k..).rev();
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn reverse_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<SledgeIterator>, Error> {
-        let ranged = self.db.range(k1..k2).rev();
+    fn reverse_until(&self, maybe_keyspace: Option<String>, k1: String, k2: String)
+                     -> Result<Box<SledgeIterator>, Error> {
+        let tree = self.get_tree(maybe_keyspace)?;
+        let ranged = tree.range(k1..k2).rev();
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
+    }
+
+    fn create_keyspace(&mut self, name: String) -> Result<(), Error> {
+        self.db.open_tree(name)
+            .or_else(|err| Err(Error::Db(err.to_string())))
+            .and(Ok(()))
     }
 
     fn stats(&self) -> Stats {
@@ -74,11 +93,37 @@ impl Storage for Sled {
 
 impl Sled {
     fn parse_range(item: Result<(IVec, IVec), sled::Error>) -> Option<KV> {
-        let i = item.or_else(|e| bail!(e)).unwrap();
+        let i = item.ok()?;
         let res: Option<KV> = match convert_vec_pairs_u8(i.0.as_ref(), i.1.as_ref()) {
             Ok(s) => Some(s),
             Err(e) => print_err_and_none!(e),
         };
         res
+    }
+
+    fn get_tree(&self, maybe_keyspace: Option<String>) -> Result<Tree, Error> {
+        match maybe_keyspace {
+            Some(ref ks) => {
+                if !self.create_tree_if_missing {
+                    let mut found: bool = false;
+                    for tree_name in self.db.tree_names() {
+                        let res = std::str::from_utf8(tree_name.as_ref())
+                            .or_else(|err| Err(Error::Parse(err)))?;
+                        if res == ks {
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if !found {
+                        return Err(Error::NotFound(format!("tree '{}' not found", ks)));
+                    }
+                }
+
+                self.db.open_tree(ks.as_bytes())
+                    .or_else(|err| Err(Error::NotFound(err.to_string())))
+            }
+            None => Ok(self.db.deref().clone()),
+        }
     }
 }

@@ -1,11 +1,9 @@
 #[cfg(test)]
 mod rocks {
-    use sledge::components::storage::get_storage;
+    use sledge::components::storage::{get_storage, Error};
 
     use crate::{do_insertions, check_iterators_equality, test_items_sorted};
-    use sledge::storage::rocks::Rocks;
-    use rocksdb::{DB, Options, ColumnFamily};
-    use sledge::conversions::vector::{convert_vec_pairs, convert_vec_pairs_u8};
+    use sledge::storage::rocks::{Rocks};
 
     #[test]
     fn test_since_until() {
@@ -57,17 +55,30 @@ mod rocks {
     }
 
     #[test]
-    fn test_create_cf() {
-        let path = "/tmp/test_start";
+    fn test_with_cf() {
+        env_logger::init();
+
+        let path = "/tmp/test_with_cf";
         let mut st = get_storage("rocksdb", path);
+        let cf1 = "cf1".to_string();
+        let cf2 = "cf2".to_string();
 
-        do_insertions(None, &mut st);
+        st.create_keyspace(cf1.clone()).unwrap();
+        do_insertions(Some(cf1.clone()), &mut st);
 
-        let a = st.start(None).unwrap();
+        match st.start(Some(cf2)){
+            Ok(_) => assert!(false),
+            Err(e) => match e {
+                Error::Preparing(s) => assert_eq!(s, "keyspace with name cf2 not found"),
+                _ => assert!(false, "expected error not found")
+            }
+        }
 
-        let tested_items: Vec<(String, String)> = test_items_sorted();
+        let a = st.start(Some(cf1.clone())).unwrap();
 
-        check_iterators_equality(a, tested_items.into_iter());
+        let items_sorted: Vec<(String, String)> = test_items_sorted();
+
+        check_iterators_equality(a, items_sorted.into_iter());
 
         std::fs::remove_dir_all(path).unwrap();
     }

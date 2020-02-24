@@ -106,6 +106,10 @@ impl Storage for Memory {
         Ok(Box::new(res.collect::<Vec<KV>>().into_iter()))
     }
 
+    fn create_keyspace(&mut self, name: String) -> Result<(), Error> {
+        Ok(())
+    }
+
     fn stats(&self) -> Stats {
         Stats {
             total_entries: self.total_entries as u128,

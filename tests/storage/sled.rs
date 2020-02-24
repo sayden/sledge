@@ -1,13 +1,14 @@
 #[cfg(test)]
 mod db {
-    use crate::{do_insertions, test_items};
-    use sledge::components::storage::{get_storage};
+    use crate::{do_insertions, test_items, test_items_sorted, check_iterators_equality};
+    use sledge::components::storage::{get_storage, Error};
     use sledge::conversions::vector::convert_vec_pairs_u8;
 
     #[test]
     fn test_put() {
         let path = "/tmp/test_put";
         let mut st = get_storage("sled", path);
+
         do_insertions(None, &mut st);
 
         let a = st.since_until(None, "2".to_string(), "4".to_string()).unwrap();
@@ -15,7 +16,7 @@ mod db {
         let mut tested_items: Vec<(String, String)> = test_items();
         tested_items.sort();
 
-        let zip= tested_items.iter().skip(1).take(2).zip(a);
+        let zip = tested_items.iter().skip(1).take(2).zip(a);
 
         for (x, y) in zip {
             assert_eq!(y, x.0)
@@ -25,37 +26,22 @@ mod db {
     }
 
     #[test]
-    fn test_put_in_tree(){
+    fn test_put_in_tree() {
         let path = "/tmp/test_put_in_tree";
-        let db = sled::open(path).unwrap();
-        let tree_a  = db.open_tree("tree_a").unwrap();
-        let tree_b  = db.open_tree("tree_b").unwrap();
+        let mut st = get_storage("sled", path);
 
-        tree_a.insert("99", "hello").unwrap();
-        tree_b.insert("00", "world").unwrap();
+        let tree_name = "my_tree".to_string();
+        let tree_name_2 = "other_tree".to_string();
+        do_insertions(Some(tree_name.clone()), &mut st);
 
-        for i in db.range("00"..){
-            let b = i.unwrap();
-            let c =convert_vec_pairs_u8(b.0.as_ref(), b.1.as_ref()).unwrap();
-            println!("{} {}", c.key,c.value);
-        }
-        println!("done");
+        st.start(Some(tree_name_2)).unwrap();
 
-        for i in tree_a.range("00"..){
-            let b = i.unwrap();
-            let c =convert_vec_pairs_u8(b.0.as_ref(), b.1.as_ref()).unwrap();
-            println!("{} {}", c.key,c.value);
-        }
-        println!("done");
+        let a = st.start(Some(tree_name.clone())).unwrap();
 
-        for i in tree_b.range("00"..){
-            let b = i.unwrap();
-            let c =convert_vec_pairs_u8(b.0.as_ref(), b.1.as_ref()).unwrap();
-            println!("{} {}", c.key,c.value);
-        }
-        println!("done");
+        let items_sorted: Vec<(String, String)> = test_items_sorted();
+
+        check_iterators_equality(a, items_sorted.into_iter());
 
         std::fs::remove_dir_all(path).unwrap();
-
     }
 }

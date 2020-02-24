@@ -1,5 +1,6 @@
 use sledge::components::storage::Storage;
 use sledge::components::kv::KV;
+use anyhow::Error;
 
 mod storage;
 
@@ -9,6 +10,7 @@ pub fn test_items_sorted() -> Vec<(String, String)> {
     is.sort();
     is
 }
+
 pub fn test_items() -> Vec<(String, String)> {
     vec![("1".to_string(), "hello".to_string()),
          ("3".to_string(), "ula".to_string()),
@@ -25,10 +27,13 @@ pub fn do_insertions(keyspace: Option<String>, st: &mut Box<dyn Storage + Send +
     }
 }
 
-pub fn check_iterators_equality(x: impl Iterator<Item=KV>, y: impl Iterator<Item=(String,String)>){
+pub fn check_iterators_equality(x: impl Iterator<Item=KV>, y: impl Iterator<Item=(String, String)>) {
     let zip = x.zip(y);
-
+    let mut total = 0;
     for (x, y) in zip {
-        assert_eq!(x, y.0)
+        assert_eq!(x, y.0);
+        total += 1;
     }
+
+    assert_ne!(total, 0)
 }
