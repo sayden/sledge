@@ -1,14 +1,18 @@
-use warp::{Filter};
-use std::sync::{Arc};
+use warp::Filter;
+use std::sync::Arc;
 use sledge::components::storage::get_storage;
 use sledge::server::filters;
+use std::env;
 
 #[tokio::main]
 async fn main() {
     env_logger::init();
 
-//    let app = Arc::new(Mutex::new(V1::new(get_storage(env!("STORAGE"), "/tmp/storage"))));
-    let db = Arc::new(tokio::sync::Mutex::new(get_storage(env!("STORAGE"), "/tmp/storage")));
+    let maybe_storage = env::var("FEEDB_STORAGE").unwrap();
+    let maybe_path = env::var("FEEDB_PATH").unwrap();
+
+    let db = Arc::new(tokio::sync::Mutex::new(get_storage(maybe_storage.as_str(), maybe_path.as_str())));
+
     let api = filters::all(db);
 
     let routes = api.with(warp::log("sledge"));

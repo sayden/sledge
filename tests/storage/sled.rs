@@ -44,4 +44,26 @@ mod db {
 
         std::fs::remove_dir_all(path).unwrap();
     }
+
+    #[test]
+    fn test_data() {
+        env_logger::init();
+
+        log::info!("hello");
+        let path = "/tmp/storage";
+        let mut st = get_storage("sled", path);
+
+        let tree_name = "my_db".to_string();
+
+        st.get(Some(tree_name), "12345".to_string()).unwrap();
+
+        let items_sorted: Vec<(String, String)> = test_items_sorted();
+
+        log::info!("iterating");
+        for (a,b) in items_sorted {
+            log::info!("test_data: {} {}", a, b)
+        }
+
+        std::fs::remove_dir_all(path).unwrap();
+    }
 }

@@ -18,7 +18,7 @@ impl Rocks {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         let create_if_missing = env::var("ROCKSDB_CREATE_CF_IF_MISSING")
-            .unwrap_or("false".to_string()) == "true";
+            .unwrap_or("true".to_string()) == "true";
 
         match DB::list_cf(&opts, path.clone()) {
             Ok(cfs) => {
@@ -38,22 +38,21 @@ impl Rocks {
 
 
 impl Storage for Rocks {
-    fn get(&self, maybe_keyspace: Option<String>, k: String) -> Result<Option<String>, Error> {
+    fn get(&self, maybe_keyspace: Option<String>, k: String) -> Result<String, Error> {
         let cf = maybe_keyspace.and_then(|cf| self.db.cf_handle(&cf));
 
         let res = match cf {
-            Some(cf) => self.db.get_cf(cf, k),
-            None => self.db.get(k),
-            // }.or_else(|err| Err(anyhow!("error doing get '{}'", err.to_string())))?;
+            Some(cf) => self.db.get_cf(cf, k.clone()),
+            None => self.db.get(k.clone()),
         }.or_else(|err| Err(Error::Get(err.to_string())))?;
 
-        let b = res
-            .and_then(|r| match String::from_utf8(r) {
-                Ok(v) => Some(v),
-                Err(e) => print_err_and_none!(e),
-            });
-
-        Ok(b)
+        match res {
+            Some(v) => match String::from_utf8(v) {
+                Ok(v) => Ok(v),
+                Err(e) => Err(Error::ParseFromUtf8(e)),
+            },
+            None => Err(Error::NotFound(k)),
+        }
     }
 
     fn put(&mut self, maybe_keyspace: Option<String>, k: String, v: String) -> Result<(), Error> {
@@ -131,7 +130,7 @@ impl Rocks {
     fn get_column_family(&self, maybe_keyspace: Option<String>) -> Result<Option<&ColumnFamily>, Error> {
         match maybe_keyspace {
             Some(ks) => self.db.cf_handle(&ks)
-                .ok_or(Error::Keyspace(ks))
+                .ok_or(Error::CannotRetrieveCF(ks))
                 .and_then(|cf| Ok(Some(cf))),
             None => Ok(None),
         }

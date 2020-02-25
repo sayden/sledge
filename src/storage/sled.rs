@@ -14,7 +14,7 @@ pub struct Sled {
 impl Sled {
     pub fn new(p: String) -> Box<dyn Storage + Send + Sync> {
         let db = sled::open(p).unwrap();
-        let create_tree = match env::var("SLEDDB_CREATE_TREE_IF_MISSING") {
+        let create_tree = match env::var("FEEDB_CREATE_TREE_IF_MISSING") {
             Ok(res) => res == "true",
             _ => true,
         };
@@ -24,14 +24,16 @@ impl Sled {
 
 
 impl Storage for Sled {
-    fn get(&self, maybe_keyspace: Option<String>, s: String) -> Result<Option<String>, Error> {
-        let db_result = self.db.get(s.clone())
+    fn get(&self, maybe_keyspace: Option<String>, s: String) -> Result<String, Error> {
+        let tree = self.get_tree(maybe_keyspace)?;
+
+        let db_result = tree.get(s.clone())
             .or_else(|err| Err(Error::Db(err.to_string())))?;
 
         match db_result {
             Some(v) => std::str::from_utf8(v.as_ref())
                 .or_else(|err| Err(Error::Parse(err)))
-                .and_then(|res| Ok(Some(res.to_string()))),
+                .and_then(|res| Ok(res.to_string())),
             None => return Err(Error::ValueNotFound(s)),
         }
     }
@@ -42,6 +44,12 @@ impl Storage for Sled {
         tree.insert(k.as_bytes(), v.as_bytes())
             .and_then(|_| Ok(()))
             .or_else(|err| Err(Error::Put(err.to_string())))
+    }
+
+    fn create_keyspace(&mut self, name: String) -> Result<(), Error> {
+        self.db.open_tree(name)
+            .or_else(|err| Err(Error::Db(err.to_string())))
+            .and(Ok(()))
     }
 
     fn start(&self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
@@ -78,12 +86,6 @@ impl Storage for Sled {
         let tree = self.get_tree(maybe_keyspace)?;
         let ranged = tree.range(k1..k2).rev();
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
-    }
-
-    fn create_keyspace(&mut self, name: String) -> Result<(), Error> {
-        self.db.open_tree(name)
-            .or_else(|err| Err(Error::Db(err.to_string())))
-            .and(Ok(()))
     }
 
     fn stats(&self) -> Stats {

@@ -3,6 +3,7 @@ use crate::storage::rocks::Rocks;
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 use std::str::Utf8Error;
+use std::string::FromUtf8Error;
 
 
 pub type SledgeIterator = dyn Iterator<Item=KV>;
@@ -32,7 +33,7 @@ pub type SledgeIterator = dyn Iterator<Item=KV>;
 * backwards("my_key", Bound::Key("stop_in_this_key"), Bound::KV(KV{key:"stop_if_this_key",value:"has_this_value"))
 */
 pub trait Storage {
-    fn get(&self, keyspace: Option<String>, s: String) -> Result<Option<String>, Error>;
+    fn get(&self, keyspace: Option<String>, s: String) -> Result<String, Error>;
     fn put(&mut self, keyspace: Option<String>, k: String, v: String) -> Result<(), Error>;
     fn create_keyspace(&mut self, name: String) -> Result<(), Error>;
 
@@ -60,17 +61,20 @@ pub fn get_storage(s: &str, p: &str) -> Box<dyn Storage + Send + Sync> {
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("{0}")]
+    #[error("error doing get: {0}")]
     Get(String),
 
-    #[error("{0}")]
+    #[error("iterator error: {0}")]
     Iterator(String),
 
-    #[error("{0}")]
+    #[error("value not found: {0}")]
     ValueNotFound(String),
 
     #[error(transparent)]
     Parse(#[from] Utf8Error),
+
+    #[error(transparent)]
+    ParseFromUtf8(#[from] FromUtf8Error),
 
     #[error("error preparing op: {0}")]
     Preparing(String),
@@ -84,12 +88,12 @@ pub enum Error {
     #[error("error creating keyspace with name {0}: {1}")]
     CannotCreateKeyspace(String, String),
 
+    #[error("cannot retrieve cf with name {0}")]
+    CannotRetrieveCF(String),
+
     #[error("keyspace with name {0} not found")]
     NotFound(String),
 
-    #[error("error opening keyspace with name {0} not found")]
-    Open(String),
-
-    #[error("keyspace error with name '{0}'")]
-    Keyspace(String)
+    #[error("error serializing data: {0}")]
+    Serialization(#[from] serde_json::Error),
 }
