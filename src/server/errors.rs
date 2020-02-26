@@ -1,5 +1,5 @@
 use std::convert::Infallible;
-use serde_json::Value;
+
 use crate::server::responses::{ReadReply, ResultEmbeddedReply, WriteReply};
 
 pub(crate) fn new_read(cause: String, db: Option<String>) -> Result<ReadReply, Infallible> {
