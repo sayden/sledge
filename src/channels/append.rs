@@ -1,5 +1,5 @@
-use crate::processors::core::Modifier;
-use crate::processors::core::*;
+use crate::channels::core::Mutator;
+use crate::channels::core::*;
 
 use serde_json::{Map, Value};
 use std::fmt;
@@ -8,12 +8,12 @@ use std::fmt::Error;
 
 #[derive(Debug)]
 pub struct Append {
-    pub modifier: Processor,
+    pub modifier: Mutation,
     pub append: String,
 }
 
-impl Modifier for Append {
-    fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+impl Mutator for Append {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_field = v.get(&self.modifier.field);
 
         let value = match maybe_field {

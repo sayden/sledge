@@ -1,5 +1,5 @@
-use crate::processors::core::Modifier;
-use crate::processors::core::*;
+use crate::channels::core::Mutator;
+use crate::channels::core::*;
 
 use serde_json::{Map, Value};
 use std::fmt;
@@ -8,12 +8,12 @@ use std::fmt::Error;
 
 #[derive(Debug)]
 pub struct Rename {
-    pub modifier: Processor,
+    pub modifier: Mutation,
     pub rename: String,
 }
 
-impl Modifier for Rename {
-    fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+impl Mutator for Rename {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_value = v.get(&self.modifier.field);
         let value = match maybe_value {
             None => return Some(anyhow!("value '{}' not found", self.modifier.field)),

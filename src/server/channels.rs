@@ -2,10 +2,10 @@ use std::sync::Arc;
 use crate::components::storage::Storage;
 use warp::{Filter, Rejection, Reply};
 use serde::{Serialize, Deserialize};
-use crate::server::filters::{with_db, InsertQueryReq};
+use crate::server::filters::{with_db};
 use bytes::Bytes;
 use std::convert::Infallible;
-use crate::server::handlers::handler_put;
+use crate::server::databases::handler_put;
 
 /**
  * `PUT /channel/{id}`
@@ -21,11 +21,3 @@ pub fn insert_channel(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>
             _ => Some(id)
         }, None, "_channel".to_string(), body))
 }
-
-// pub async fn insert_channel_handler(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-//                          maybe_path_id: Option<String>,
-//                          maybe_query: Option<InsertQueryReq>,
-//                          keyspace: String,
-//                          req: Bytes)
-//                          -> Result<impl Reply, Infallible>{
-// }

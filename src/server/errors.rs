@@ -13,7 +13,6 @@ pub(crate) fn new_read(cause: String, db: Option<String>) -> Result<ReadReply, I
     })
 }
 
-
 pub(crate) fn new_write(cause: &str, db: Option<String>) -> Result<WriteReply, Infallible> {
     Ok(WriteReply {
         result: ResultEmbeddedReply {

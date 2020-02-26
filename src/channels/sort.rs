@@ -1,5 +1,5 @@
-use crate::processors::core::Modifier;
-use crate::processors::core::*;
+use crate::channels::core::Mutator;
+use crate::channels::core::*;
 
 use serde_json::{Map, Value};
 use std::fmt;
@@ -7,12 +7,12 @@ use std::fmt::{Error, Formatter};
 
 #[derive(Debug)]
 pub struct Sort {
-    pub modifier: Processor,
+    pub modifier: Mutation,
     pub descending: bool,
 }
 
-impl Modifier for Sort {
-    fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+impl Mutator for Sort {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_value = v.get(&self.modifier.field);
 
         let value = match maybe_value {

@@ -1,14 +1,13 @@
 use std::convert::Infallible;
 use warp::Reply;
 use std::sync::Arc;
-use crate::server::filters::{GetReq, InsertQueryReq};
 use crate::components::storage::{Storage, Error};
 use bytes::Bytes;
 use uuid::Uuid;
 use warp::reply::Response;
-use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use crate::server::{errors, responses};
+use crate::server::requests::{InsertQueryReq, GetReq};
 
 
 pub async fn get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>, keyspace: String, key: String)
@@ -32,7 +31,6 @@ pub async fn get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>, ke
 
 pub async fn query(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>, keyspace: String, req: GetReq)
                    -> Result<impl Reply, Infallible> {
-    log::debug!("query: {}", req);
     let v1_locked = db.lock().await;
     let v1 = v1_locked;
 
@@ -45,22 +43,6 @@ pub async fn query(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>, 
     match serde_json::from_str::<Value>(data.as_str()) {
         Ok(value) => responses::new_read(Some(Box::new([value])), Some(keyspace)),
         Err(err) => errors::new_read(Error::Serialization(err).to_string(), Some(keyspace)),
-    }
-}
-
-pub fn get_id(maybe_query: Option<InsertQueryReq>, maybe_path_id: Option<String>, req: &Bytes) -> Option<String> {
-    if (&maybe_query).is_some() && maybe_query.clone().unwrap().id.is_some() {
-        let j: Value = serde_json::from_slice(req.as_ref()).ok()?;
-        return Some(j[maybe_query?.id?].as_str()?.to_string());
-    }
-
-    if maybe_path_id.is_some() {
-        match maybe_path_id.clone()?.as_str() {
-            "_auto" => Some(Uuid::new_v4().to_string()), // generate key
-            _ => maybe_path_id,
-        }
-    } else {
-        return None; //No ?id= nor /db/{db}/{id} nor /db/{db}/auto so no way to know the ID of this
     }
 }
 
@@ -85,14 +67,30 @@ pub async fn handler_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Syn
     }
 }
 
+fn get_id(maybe_query: Option<InsertQueryReq>, maybe_path_id: Option<String>, req: &Bytes) -> Option<String> {
+    if (&maybe_query).is_some() && maybe_query.clone().unwrap().id.is_some() {
+        let j: Value = serde_json::from_slice(req.as_ref()).ok()?;
+        return Some(j[maybe_query?.id?].as_str()?.to_string());
+    }
+
+    if maybe_path_id.is_some() {
+        match maybe_path_id.clone()?.as_str() {
+            "_auto" => Some(Uuid::new_v4().to_string()), // generate key
+            _ => maybe_path_id,
+        }
+    } else {
+        return None; //No ?id= nor /db/{db}/{id} nor /db/{db}/auto so no way to know the ID of this
+    }
+}
+
 
 #[test]
 fn test_get_key() {
     let byt = Bytes::new();
     let s = r#"{"my_key":"my_value"}"#;
     let bytes_with_content = Bytes::from(s);
-    assert_eq!(get_id(Some("my_key".to_string()), None, &byt), None);
-    assert_eq!(get_id(Some("my_key".to_string()), Some("hello".to_string()),
+    assert_eq!(get_id(Some(InsertQueryReq{ id: Some("my_key".to_string()), channel: None }), None, &byt), None);
+    assert_eq!(get_id(Some(InsertQueryReq{ id: Some("my_key".to_string()), channel: None }), Some("hello".to_string()),
                       &bytes_with_content), Some("my_value".to_string()));
     assert_eq!(get_id(None, Some("my_key2".to_string()), &byt), Some("my_key2".to_string()));
     assert_eq!(get_id(None, Some("my_key2".to_string()), &byt), Some("my_key2".to_string()));

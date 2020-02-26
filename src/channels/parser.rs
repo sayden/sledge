@@ -1,10 +1,10 @@
 use serde_json::Value;
-use crate::processors::core::{factory, Modifier};
+use crate::channels::core::{factory, Mutator};
 use anyhow::Error;
 use std::ops::Deref;
 use std::borrow::BorrowMut;
 
-pub struct Processors(Vec<Box<dyn Modifier>>);
+pub struct Processors(Vec<Box<dyn Mutator>>);
 
 impl Processors {
     pub fn new(mo: String) -> Result<Self, Error> {
@@ -12,14 +12,14 @@ impl Processors {
             .or_else(|err| bail!("error tyring to parse modifiers: {:?}", err))?;
         let modifiers = ms.into_iter()
             .filter_map(|x| factory(x))
-            .collect::<Vec<Box<dyn Modifier>>>();
+            .collect::<Vec<Box<dyn Mutator>>>();
 
         Ok(Processors(modifiers))
     }
 }
 
 impl Deref for Processors {
-    type Target = Vec<Box<dyn Modifier>>;
+    type Target = Vec<Box<dyn Mutator>>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -32,7 +32,7 @@ pub fn parse_and_modify(json_data: &str, mods: &Processors) -> Result<String, Er
         .ok_or(anyhow!("error trying to create mutable reference to json"))?;
 
     for modifier in mods.iter() {
-        match modifier.modify(mutp.borrow_mut()) {
+        match modifier.mutate(mutp.borrow_mut()) {
             Some(err) => {
                 warn!("error trying to modify json '{}'", err);
             }

@@ -3,35 +3,13 @@ use std::sync::Arc;
 use std::convert::Infallible;
 use serde::{Serialize, Deserialize};
 use crate::components::storage::Storage;
-use crate::server::{handlers, management};
+use crate::server::{databases, management};
 use std::fmt::Display;
 use serde::export::Formatter;
-use crate::server::handlers::handler_put;
+use crate::server::databases::handler_put;
 use crate::server::channels::insert_channel;
-
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct InsertQueryReq {
-    pub(crate) id: Option<String>,
-    pub(crate) channel: Option<String>,
-}
-
-impl Display for InsertQueryReq {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", serde_json::to_string(self).unwrap_or(r#"{"error":true}"#.to_string()))
-    }
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct GetReq {
-    pub(crate) key: String
-}
-
-impl Display for GetReq {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "key: {}", self.key)
-    }
-}
+use crate::server::management::{healthz, status};
+use crate::server::requests::{GetReq, InsertQueryReq};
 
 /// Filters combined.
 pub fn all(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
@@ -45,26 +23,6 @@ pub fn all(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>) -> impl 
 }
 
 /**
- * Stats / Health
-*/
-
-/// GET /healthz
-pub fn healthz() -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
-    warp::path!("healthz")
-        .and(warp::get())
-        .and_then(|| management::ok())
-}
-
-/// GET /stats
-pub fn status(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
-              -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
-    warp::path!("stats")
-        .and(warp::get())
-        .and(with_db(db))
-        .and_then(|x| management::stats(x))
-}
-
-/**
  * Read operations
 */
 
@@ -74,7 +32,7 @@ pub fn get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
     warp::path!("db" / String / String)
         .and(warp::get())
         .and(with_db(db))
-        .and_then(|keyspace, key: String, db| handlers::get(db, keyspace, key))
+        .and_then(|keyspace, key: String, db| databases::get(db, keyspace, key))
 }
 
 /// POST /db/{db}
@@ -84,7 +42,7 @@ pub fn query(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
         .and(warp::body::json())
         .and(warp::post())
         .and(with_db(db))
-        .and_then(|keyspace, doc: GetReq, db| handlers::query(db, keyspace, doc))
+        .and_then(|keyspace, doc: GetReq, db| databases::query(db, keyspace, doc))
 }
 
 /**

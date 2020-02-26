@@ -1,5 +1,5 @@
-use crate::processors::core::Modifier;
-use crate::processors::core::*;
+use crate::channels::core::Mutator;
+use crate::channels::core::*;
 
 use serde_json::{Map, Value};
 use std::fmt;
@@ -7,12 +7,12 @@ use serde::export::Formatter;
 use std::fmt::Error;
 
 pub struct UpperLowercase {
-    pub modifier: Processor,
+    pub modifier: Mutation,
     pub f: fn(&str) -> String,
 }
 
-impl Modifier for UpperLowercase {
-    fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+impl Mutator for UpperLowercase {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         let maybe_value = v.get(&self.modifier.field);
 
         let value = match maybe_value {

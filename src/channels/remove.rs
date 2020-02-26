@@ -1,4 +1,4 @@
-use crate::processors::core::{Modifier, Processor};
+use crate::channels::core::{Mutator, Mutation};
 use serde_json::{Map, Value};
 use std::fmt;
 use serde::export::Formatter;
@@ -6,11 +6,11 @@ use std::fmt::Error;
 
 #[derive(Debug)]
 pub struct Remove {
-    pub(crate) modifier: Processor
+    pub(crate) modifier: Mutation
 }
 
-impl Modifier for Remove {
-    fn modify(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+impl Mutator for Remove {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
         match v.remove(self.modifier.field.as_str()) {
             None => Some(anyhow!("value {} not found", self.modifier.field)),
             Some(_) => None

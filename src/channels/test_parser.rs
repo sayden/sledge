@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::processors::parser::{Processors, parse_and_modify};
+use crate::channels::parser::{Processors, parse_and_modify};
 
 #[test]
 fn test_parser() {

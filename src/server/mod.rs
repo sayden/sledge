@@ -1,4 +1,4 @@
-pub mod handlers;
+pub mod databases;
 pub mod filters;
 pub mod management;
 pub(crate) mod channels;
