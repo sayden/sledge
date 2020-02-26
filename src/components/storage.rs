@@ -4,6 +4,7 @@ use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 use std::str::Utf8Error;
 use std::string::FromUtf8Error;
+use bytes::Bytes;
 
 
 pub type SledgeIterator = dyn Iterator<Item=KV>;
@@ -34,7 +35,7 @@ pub type SledgeIterator = dyn Iterator<Item=KV>;
 */
 pub trait Storage {
     fn get(&self, keyspace: Option<String>, s: String) -> Result<String, Error>;
-    fn put(&mut self, keyspace: Option<String>, k: String, v: String) -> Result<(), Error>;
+    fn put(&mut self, keyspace: Option<String>, k: String, v: Bytes) -> Result<(), Error>;
     fn create_keyspace(&mut self, name: String) -> Result<(), Error>;
 
     fn start<'a>(&'a self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
@@ -96,4 +97,12 @@ pub enum Error {
 
     #[error("error serializing data: {0}")]
     Serialization(#[from] serde_json::Error),
+}
+
+pub fn put_error(cause: String) -> Result<(), Error> {
+    Err(Error::Put(cause))
+}
+
+pub fn create_keyspace_error(name:String, cause: String) -> Result<(), Error> {
+    Err(Error::CannotCreateKeyspace(name, cause))
 }

@@ -1,22 +1,24 @@
 use warp::{Filter, Rejection, Reply};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use std::convert::Infallible;
 use serde::{Serialize, Deserialize};
 use crate::components::storage::Storage;
-use crate::server::handlers;
+use crate::server::{handlers, management};
 use std::fmt::Display;
 use serde::export::Formatter;
+use crate::server::handlers::handler_put;
+use crate::server::channels::insert_channel;
 
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct InsertQueryReq {
     pub(crate) id: Option<String>,
+    pub(crate) channel: Option<String>,
 }
 
 impl Display for InsertQueryReq {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "key: {}", self.id.as_ref().unwrap_or(&"not found".to_string()))
+        write!(f, "{}", serde_json::to_string(self).unwrap_or(r#"{"error":true}"#.to_string()))
     }
 }
 
@@ -32,24 +34,42 @@ impl Display for GetReq {
 }
 
 /// Filters combined.
-pub fn all(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+pub fn all(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
     healthz()
         .or(status(db.clone()))
-        .or(insert(db.clone()))
-        .or(insert_id_in_json(db.clone()))
+        .or(insert_doc(db.clone()))
+        .or(insert_doc_id_in_json(db.clone()))
         .or(get(db.clone()))
         .or(query(db.clone()))
+        .or(insert_channel(db.clone()))
 }
+
+/**
+ * Stats / Health
+*/
 
 /// GET /healthz
 pub fn healthz() -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
     warp::path!("healthz")
         .and(warp::get())
-        .and_then(|| handlers::ok())
+        .and_then(|| management::ok())
 }
 
+/// GET /stats
+pub fn status(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
+              -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+    warp::path!("stats")
+        .and(warp::get())
+        .and(with_db(db))
+        .and_then(|x| management::stats(x))
+}
+
+/**
+ * Read operations
+*/
+
 /// GET /db/{db}/{key}
-pub fn get(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>)
+pub fn get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
            -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
     warp::path!("db" / String / String)
         .and(warp::get())
@@ -58,7 +78,7 @@ pub fn get(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>)
 }
 
 /// POST /db/{db}
-pub fn query(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>)
+pub fn query(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
              -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
     warp::path!("db" / String)
         .and(warp::body::json())
@@ -67,41 +87,37 @@ pub fn query(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>)
         .and_then(|keyspace, doc: GetReq, db| handlers::query(db, keyspace, doc))
 }
 
-/// GET /stats
-pub fn status(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>)
-              -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
-    warp::path!("stats")
-        .and(warp::get())
-        .and(with_db(db))
-        .and_then(|x| handlers::stats(x))
-}
+/**
+ * Write operations
+*/
 
-/// PUT /db with JSON body
-pub fn insert(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>)
-              -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+/**
+ * `PUT /db/{db}/{id}?channel={id}`
+ * `PUT /db/{db}/_auto?channel={id}`
+*/
+pub fn insert_doc(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
     warp::path!("db" / String / String)
         .and(warp::put())
         .and(with_db(db))
+        .and(warp::query::<InsertQueryReq>())
         .and(warp::body::bytes())
-        .and_then(|keyspace: String, key: String, db, doc| handlers::insert(db, keyspace, match key.is_empty() {
-            true => None,
-            false => Some(key),
-        }, None, doc))
+        .and_then(|keyspace, path_id: String, db, query, body| handler_put(db, path_id.into(), Some(query), keyspace, body))
 }
 
-/// PUT /db with JSON body
-pub fn insert_id_in_json(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>)
-                         -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+/**
+ * `PUT /db/{db}?id={json_field}&channel={id}`
+*/
+pub fn insert_doc_id_in_json(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
+                             -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
     warp::path!("db" / String)
         .and(warp::put())
         .and(with_db(db))
-        .and(warp::body::bytes())
         .and(warp::query::<InsertQueryReq>())
-        .and_then(|keyspace: String, db, doc, query| handlers::insert(db, keyspace, None, Some(query), doc))
+        .and(warp::body::bytes())
+        .and_then(|keyspace, db, query, body| handler_put(db, None, Some(query), keyspace, body))
 }
 
-
-fn with_db(db: Arc<Mutex<Box<dyn Storage + Send + Sync>>>)
-           -> impl Filter<Extract=(Arc<Mutex<Box<dyn Storage + Send + Sync>>>, ), Error=Infallible> + Clone {
+pub fn with_db(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
+               -> impl Filter<Extract=(Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>, ), Error=Infallible> + Clone {
     warp::any().map(move || db.clone())
 }

@@ -5,6 +5,7 @@ use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 use std::ops::Deref;
 use std::env;
+use bytes::Bytes;
 
 pub struct Sled {
     db: sled::Db,
@@ -38,10 +39,10 @@ impl Storage for Sled {
         }
     }
 
-    fn put(&mut self, maybe_keyspace: Option<String>, k: String, v: String) -> Result<(), Error> {
+    fn put(&mut self, maybe_keyspace: Option<String>, k: String, v: Bytes) -> Result<(), Error> {
         let tree = self.get_tree(maybe_keyspace)?;
 
-        tree.insert(k.as_bytes(), v.as_bytes())
+        tree.insert(k.as_bytes(), v.as_ref())
             .and_then(|_| Ok(()))
             .or_else(|err| Err(Error::Put(err.to_string())))
     }
@@ -58,7 +59,7 @@ impl Storage for Sled {
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn end(&self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn end(&self, _maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
         unimplemented!()
     }
 

@@ -2,11 +2,12 @@ use rocksdb::{DB, DBIterator, ColumnFamily, Options};
 
 
 use crate::conversions::vector::convert_vec_pairs;
-use crate::components::storage::{Storage, Error};
+use crate::components::storage::{Storage, Error, put_error, create_keyspace_error};
 use std::iter::FilterMap;
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 use std::env;
+use bytes::Bytes;
 
 pub struct Rocks {
     db: rocksdb::DB,
@@ -55,25 +56,29 @@ impl Storage for Rocks {
         }
     }
 
-    fn put(&mut self, maybe_keyspace: Option<String>, k: String, v: String) -> Result<(), Error> {
+    fn put(&mut self, maybe_keyspace: Option<String>, k: String, v: Bytes) -> Result<(), Error> {
+        // Write to default column family
         if maybe_keyspace.is_none() {
-            return self.db.put(k, v).or_else(|err| Err(Error::Put(err.to_string())));
+            return self.db.put(k, v).or_else(put_error_with_rocks_err);
         }
 
-        let cf = maybe_keyspace.unwrap();
-        let maybe_cf = self.db.cf_handle(&cf);
+        let cf_name = maybe_keyspace.unwrap();
+        let maybe_cf = self.db.cf_handle(&cf_name);
 
-        if maybe_cf.is_none() && self.create_cf_if_missing {
-            self.db.create_cf(cf.clone(), &rocksdb::Options::default())
-                .or_else(|err| Err(Error::CannotCreateKeyspace(cf.clone(), err.to_string())))?;
-            let cf_created = self.db.cf_handle(&cf)
-                .ok_or(Error::CannotCreateKeyspace(cf, "unknown error".to_string()))?;
+        match (maybe_cf, self.create_cf_if_missing) {
+            (Some(cf), _) => self.db.put_cf(cf, k, v).or_else(put_error_with_rocks_err),
+            (None, true) => {
+                self.db.create_cf(cf_name.clone(), &rocksdb::Options::default())
+                    .or_else(|err| keyspace_error_with_rocks_err(&cf_name.clone(), err))?;
 
-            self.db.put_cf(cf_created, k, v)
-        } else {
-            self.db.put(k, v)
+                let cf = self.db.cf_handle(&cf_name)
+                    .ok_or(Error::CannotCreateKeyspace(cf_name, "unknown error. Keyspace not created".into()))?;
+
+                self.db.put_cf(cf, k, v)
+                    .or_else(put_error_with_rocks_err)
+            }
+            (None, false) => put_error("cf not found and 'create if missing' is false".into()),
         }
-            .or_else(|err| Err(Error::Put(err.to_string())))
     }
 
     fn start<'a>(&'a self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
@@ -160,4 +165,12 @@ impl Rocks {
 
         Ok(Box::new(Rocks::simple_iterator(db_iter)))
     }
+}
+
+fn put_error_with_rocks_err(cause: rocksdb::Error) -> Result<(), Error> {
+    put_error(cause.to_string())
+}
+
+fn keyspace_error_with_rocks_err(name: &str, cause: rocksdb::Error) -> Result<(), Error> {
+    create_keyspace_error(name.into(), cause.to_string())
 }
