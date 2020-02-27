@@ -12,13 +12,13 @@ pub struct Sled {
 }
 
 impl Sled {
-    pub fn new(p: String) -> Box<dyn Storage + Send + Sync> {
+    pub fn new(p: String) -> impl Storage + Send + Sync {
         let db = sled::open(p).unwrap();
         let create_tree = match env::var("FEEDB_CREATE_TREE_IF_MISSING") {
             Ok(res) => res == "true",
             _ => true,
         };
-        Box::new(Sled { db, create_tree_if_missing: create_tree })
+        Sled { db, create_tree_if_missing: create_tree }
     }
 }
 

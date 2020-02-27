@@ -13,7 +13,7 @@ pub struct Rocks {
 }
 
 impl Rocks {
-    pub fn new(path: String) -> Box<dyn Storage + Send + Sync> {
+    pub fn new(path: String) -> impl Storage + Send + Sync {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         let create_if_missing = env::var("ROCKSDB_CREATE_CF_IF_MISSING")
@@ -22,14 +22,14 @@ impl Rocks {
         match DB::list_cf(&opts, path.clone()) {
             Ok(cfs) => {
                 match DB::open_cf(&opts, path.clone(), cfs) {
-                    Ok(db) => return Box::new(Rocks { db, create_cf_if_missing: create_if_missing }),
+                    Ok(db) => return Rocks { db, create_cf_if_missing: create_if_missing },
                     Err(err) => panic!(err),
                 }
             }
             Err(e) => {
                 log::warn!("{}", e.to_string());
                 let db = DB::open(&opts, path.clone()).unwrap();
-                return Box::new(Rocks { db, create_cf_if_missing: create_if_missing });
+                return Rocks { db, create_cf_if_missing: create_if_missing };
             }
         };
     }
