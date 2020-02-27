@@ -1,5 +1,4 @@
 use sled::{IVec, Tree};
-use crate::conversions::vector::convert_vec_pairs_u8;
 use crate::components::storage::{Storage, SledgeIterator, Error};
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
@@ -96,12 +95,8 @@ impl Storage for Sled {
 
 impl Sled {
     fn parse_range(item: Result<(IVec, IVec), sled::Error>) -> Option<KV> {
-        let i = item.ok()?;
-        let res: Option<KV> = match convert_vec_pairs_u8(i.0.as_ref(), i.1.as_ref()) {
-            Ok(s) => Some(s),
-            Err(e) => print_err_and_none!(e),
-        };
-        res
+        let (x, y) = item.ok()?;
+        Some(KV { key: x.to_vec(), value: y.to_vec() }) //TODO this seems to copies to the entire vector
     }
 
     fn get_tree(&self, maybe_keyspace: Option<String>) -> Result<Tree, Error> {

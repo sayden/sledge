@@ -1,9 +1,7 @@
-use rocksdb::{DB, DBIterator, ColumnFamily, Options};
+use rocksdb::{DB, ColumnFamily, Options};
 
 
-use crate::conversions::vector::convert_vec_pairs;
 use crate::components::storage::{Storage, Error, put_error, create_keyspace_error};
-use std::iter::FilterMap;
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 use std::env;
@@ -81,6 +79,12 @@ impl Storage for Rocks {
         }
     }
 
+    fn create_keyspace(&mut self, name: String) -> Result<(), Error> {
+        let opt = rocksdb::Options::default();
+        self.db.create_cf(&name, &opt)
+            .or_else(|err| Err(Error::CannotCreateKeyspace(name, err.to_string())))
+    }
+
     fn start<'a>(&'a self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
         self.rocks_iterator(maybe_keyspace, rocksdb::IteratorMode::Start)
     }
@@ -101,7 +105,7 @@ impl Storage for Rocks {
             maybe_keyspace,
             rocksdb::IteratorMode::From(k.as_bytes(), rocksdb::Direction::Forward))
             .and_then(|iter| Ok(iter.take_while(
-                move |x| x.key != k2)))?;
+                move |x| *x != k2)))?;
 
         Ok(Box::new(res))
     }
@@ -110,25 +114,24 @@ impl Storage for Rocks {
                    -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Reverse));
-        Ok(Box::new(Rocks::simple_iterator(db_iter)))
+        Ok(Box::new(db_iter.map(tuplebox_to_kv)))
     }
 
     fn reverse_until<'a>(&'a self, _maybe_keyspace: Option<String>, k1: String, k2: String)
                          -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k1.as_bytes(),
                                                                    rocksdb::Direction::Reverse));
-        Ok(Box::new(Rocks::simple_iterator(db_iter).take_while(move |x| x.key != k2)))
-    }
-
-    fn create_keyspace(&mut self, name: String) -> Result<(), Error> {
-        let opt = rocksdb::Options::default();
-        self.db.create_cf(&name, &opt)
-            .or_else(|err| Err(Error::CannotCreateKeyspace(name, err.to_string())))
+        Ok(Box::new(db_iter.map(tuplebox_to_kv)
+            .take_while(move |kv| *kv != k2)))
     }
 
     fn stats(&self) -> Stats {
         unimplemented!()
     }
+}
+
+fn tuplebox_to_kv(z: (Box<[u8]>, Box<[u8]>)) -> KV {
+    KV { key: z.0.into_vec(), value: z.1.into_vec() }
 }
 
 impl Rocks {
@@ -141,18 +144,6 @@ impl Rocks {
         }
     }
 
-    fn simple_iterator(iter: DBIterator) -> FilterMap<DBIterator, fn((Box<[u8]>, Box<[u8]>)) -> Option<KV>> {
-        iter.filter_map(Rocks::tuplebox_to_maybe_kv)
-    }
-
-    fn tuplebox_to_maybe_kv(z: (Box<[u8]>, Box<[u8]>)) -> Option<KV> {
-        let (x, y) = (z.0, z.1);
-        return match convert_vec_pairs(x.into_vec(), y.into_vec()) {
-            Err(e) => print_err_and_none!(e),
-            Ok(pair) => Some(pair),
-        };
-    }
-
     fn rocks_iterator<'a>(&'a self, maybe_keyspace: Option<String>, mode: rocksdb::IteratorMode)
                           -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
         let cf = self.get_column_family(maybe_keyspace)?;
@@ -163,7 +154,7 @@ impl Rocks {
             None => Ok(self.db.iterator(mode)),
         }?;
 
-        Ok(Box::new(Rocks::simple_iterator(db_iter)))
+        Ok(Box::new(db_iter.map(tuplebox_to_kv)))
     }
 }
 
