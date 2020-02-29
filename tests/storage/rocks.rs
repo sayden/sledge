@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod rocks {
-    use sledge::components::storage::{get_storage, Error};
+    use bytes::Bytes;
+use sledge::components::storage::{get_storage, Error};
 
     use crate::{do_insertions, check_iterators_equality, test_items_sorted};
-    use sledge::storage::rocks::{Rocks};
 
     #[test]
     fn test_since_until() {
@@ -14,7 +14,7 @@ mod rocks {
 
         let a = st.since_until(None, "2".to_string(), "4".to_string()).unwrap();
 
-        let tested_items: Vec<(String, String)> = test_items_sorted();
+        let tested_items: Vec<(String, Bytes)> = test_items_sorted();
 
         check_iterators_equality(a, tested_items.into_iter().skip(1).take(2));
 
@@ -30,7 +30,7 @@ mod rocks {
 
         let a = st.start(None).unwrap();
 
-        let tested_items: Vec<(String, String)> = test_items_sorted();
+        let tested_items: Vec<(String, Bytes)> = test_items_sorted();
 
         check_iterators_equality(a, tested_items.into_iter());
 
@@ -46,7 +46,7 @@ mod rocks {
 
         let a = st.end(None).unwrap();
 
-        let mut tested_items: Vec<(String, String)> = test_items_sorted();
+        let mut tested_items: Vec<(String, Bytes)> = test_items_sorted();
         tested_items.reverse();
 
         check_iterators_equality(a, tested_items.into_iter());
@@ -76,7 +76,7 @@ mod rocks {
 
         let a = st.start(Some(cf1.clone())).unwrap();
 
-        let items_sorted: Vec<(String, String)> = test_items_sorted();
+        let items_sorted: Vec<(String, Bytes)> = test_items_sorted();
 
         check_iterators_equality(a, items_sorted.into_iter());
 

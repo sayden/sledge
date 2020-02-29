@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod db {
-    use crate::{do_insertions, test_items, test_items_sorted, check_iterators_equality};
-    use sledge::components::storage::{get_storage, Error};
-    use sledge::conversions::vector::convert_vec_pairs_u8;
+    use bytes::Bytes;
+use crate::{do_insertions, test_items, test_items_sorted, check_iterators_equality};
+    use sledge::components::storage::{get_storage};
 
     #[test]
     fn test_put() {
@@ -13,7 +13,7 @@ mod db {
 
         let a = st.since_until(None, "2".to_string(), "4".to_string()).unwrap();
 
-        let mut tested_items: Vec<(String, String)> = test_items();
+        let mut tested_items: Vec<(String, Bytes)> = test_items();
         tested_items.sort();
 
         let zip = tested_items.iter().skip(1).take(2).zip(a);
@@ -38,7 +38,7 @@ mod db {
 
         let a = st.start(Some(tree_name.clone())).unwrap();
 
-        let items_sorted: Vec<(String, String)> = test_items_sorted();
+        let items_sorted: Vec<(String, Bytes)> = test_items_sorted();
 
         check_iterators_equality(a, items_sorted.into_iter());
 
@@ -57,11 +57,11 @@ mod db {
 
         st.get(Some(tree_name), "12345".to_string()).unwrap();
 
-        let items_sorted: Vec<(String, String)> = test_items_sorted();
+        let items_sorted: Vec<(String, Bytes)> = test_items_sorted();
 
         log::info!("iterating");
         for (a,b) in items_sorted {
-            log::info!("test_data: {} {}", a, b)
+            log::info!("test_data: {} {}", a, std::str::from_utf8(b.bytes()).unwrap())
         }
 
         std::fs::remove_dir_all(path).unwrap();

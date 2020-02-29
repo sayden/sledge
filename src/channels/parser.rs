@@ -3,29 +3,37 @@ use crate::channels::core::{factory, Mutator};
 use anyhow::Error;
 use std::ops::Deref;
 use std::borrow::BorrowMut;
+use serde::{Serialize,Deserialize};
 
-pub struct Processors(Vec<Box<dyn Mutator>>);
+pub struct Channel(Vec<Box<dyn Mutator>>);
 
-impl Processors {
-    pub fn new(mo: String) -> Result<Self, Error> {
-        let ms: Vec<Value> = serde_json::from_str(mo.as_str())
+#[derive(Serialize,Deserialize)]
+pub struct NewChannel {
+    name: String,
+    channel: Vec<Value>,
+}
+
+impl Channel {
+    pub fn new(mo: &str) -> Result<Self, Error> {
+        let ms: NewChannel = serde_json::from_str(mo)
             .or_else(|err| bail!("error tyring to parse modifiers: {:?}", err))?;
-        let modifiers = ms.into_iter()
+
+        let mutators = ms.channel.into_iter()
             .filter_map(|x| factory(x))
             .collect::<Vec<Box<dyn Mutator>>>();
 
-        Ok(Processors(modifiers))
+        Ok(Channel(mutators))
     }
 }
 
-impl Deref for Processors {
+impl Deref for Channel {
     type Target = Vec<Box<dyn Mutator>>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub fn parse_and_modify(json_data: &str, mods: &Processors) -> Result<String, Error> {
+pub fn parse_and_modify(json_data: &str, mods: &Channel) -> Result<String, Error> {
     let mut p: Value = serde_json::from_str(json_data)
         .or_else(|err| bail!("error trying to parse incoming json {:?}", err))?;
     let mutp = p.as_object_mut()

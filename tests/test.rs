@@ -1,33 +1,33 @@
+use bytes::Bytes;
 use sledge::components::storage::Storage;
 use sledge::components::kv::KV;
-use anyhow::Error;
 
 mod storage;
 
 
-pub fn test_items_sorted() -> Vec<(String, String)> {
+pub fn test_items_sorted() -> Vec<(String, Bytes)> {
     let mut is = test_items();
     is.sort();
     is
 }
 
-pub fn test_items() -> Vec<(String, String)> {
-    vec![("1".to_string(), "hello".to_string()),
-         ("3".to_string(), "ula".to_string()),
-         ("7".to_string(), "yoda".to_string()),
-         ("2".to_string(), "world".to_string()),
-         ("5".to_string(), "tesla".to_string()),
-         ("4".to_string(), "tyrion".to_string()),
-         ("6".to_string(), "rocco".to_string())]
+pub fn test_items() -> Vec<(String, Bytes)> {
+    vec![("1".to_string(), bytes::Bytes::from("hello")),
+         ("3".to_string(), bytes::Bytes::from("ula")),
+         ("7".to_string(), bytes::Bytes::from("yoda")),
+         ("2".to_string(), bytes::Bytes::from("world")),
+         ("5".to_string(), bytes::Bytes::from("tesla")),
+         ("4".to_string(), bytes::Bytes::from("tyrion")),
+         ("6".to_string(), bytes::Bytes::from("rocco"))]
 }
 
 pub fn do_insertions(keyspace: Option<String>, st: &mut Box<dyn Storage + Send + Sync>) {
-    for test_item in test_items() {
-        st.put(keyspace.clone(), test_item.0, test_item.1).unwrap()
+    for (x, y) in test_items().into_iter() {
+        st.put(keyspace.clone(), x, y).unwrap()
     }
 }
 
-pub fn check_iterators_equality(x: impl Iterator<Item=KV>, y: impl Iterator<Item=(String, String)>) {
+pub fn check_iterators_equality(x: impl Iterator<Item=KV>, y: impl Iterator<Item=(String, Bytes)>) {
     let zip = x.zip(y);
     let mut total = 0;
     for (x, y) in zip {

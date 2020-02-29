@@ -63,7 +63,7 @@ impl Storage for Sled {
         unimplemented!()
     }
 
-    fn range<'a>(&'a self, keyspace: Option<String>, query: Query) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn range<'a>(&'a self, _keyspace: Option<String>, _query: Query) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
         unimplemented!()
     }
 
