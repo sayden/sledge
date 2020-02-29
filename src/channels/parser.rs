@@ -1,43 +1,53 @@
 use serde_json::Value;
 use crate::channels::core::{factory, Mutator};
-use anyhow::Error;
 use std::ops::Deref;
 use std::borrow::BorrowMut;
-use serde::{Serialize,Deserialize};
+use serde::{Serialize, Deserialize};
+use crate::components::storage::Error;
 
-pub struct Channel(Vec<Box<dyn Mutator>>);
+pub struct Channel {
+    name: String,
+    channel: Vec<Box<dyn Mutator>>,
+}
 
-#[derive(Serialize,Deserialize)]
-pub struct NewChannel {
+#[derive(Serialize, Deserialize)]
+pub struct ChannelToParseJSON {
     name: String,
     channel: Vec<Value>,
 }
 
 impl Channel {
     pub fn new(mo: &str) -> Result<Self, Error> {
-        let ms: NewChannel = serde_json::from_str(mo)
-            .or_else(|err| bail!("error tyring to parse modifiers: {:?}", err))?;
+        let ms: ChannelToParseJSON = serde_json::from_str(mo).or_else(|err| Err(Error::Serialization(err)))?;
 
         let mutators = ms.channel.into_iter()
             .filter_map(|x| factory(x))
             .collect::<Vec<Box<dyn Mutator>>>();
 
-        Ok(Channel(mutators))
+        Ok(Channel { name: "".to_string(), channel: mutators })
     }
 }
 
 impl Deref for Channel {
     type Target = Vec<Box<dyn Mutator>>;
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.channel
     }
 }
 
-pub fn parse_and_modify(json_data: &str, mods: &Channel) -> Result<String, Error> {
-    let mut p: Value = serde_json::from_str(json_data)
-        .or_else(|err| bail!("error trying to parse incoming json {:?}", err))?;
+pub fn parse_and_modify_str(json_data: &str, mods: &Channel) -> Result<String, Error> {
+    let p: Value = serde_json::from_str(json_data).or_else(|err| Err(Error::Serialization(err)))?;
+    parse_and_modify(p, mods)
+}
+
+pub fn parse_and_modify_u8(json_data: &[u8], mods: &Channel) -> Result<String, Error> {
+    let p: Value = serde_json::from_slice(json_data).or_else(|err| Err(Error::Serialization(err)))?;
+    parse_and_modify(p, mods)
+}
+
+fn parse_and_modify(mut p: Value, mods: &Channel) -> Result<String, Error> {
     let mutp = p.as_object_mut()
-        .ok_or(anyhow!("error trying to create mutable reference to json"))?;
+        .ok_or(Error::SerializationString("error trying to create mutable reference to json".to_string()))?;
 
     for modifier in mods.iter() {
         match modifier.mutate(mutp.borrow_mut()) {
@@ -49,5 +59,5 @@ pub fn parse_and_modify(json_data: &str, mods: &Channel) -> Result<String, Error
     }
 
     serde_json::to_string(&mutp)
-        .or_else(|err: serde_json::error::Error| bail!("error generating json string: '{:?}", err))
+        .or_else(|err: serde_json::error::Error| Err(Error::Serialization(err)))
 }

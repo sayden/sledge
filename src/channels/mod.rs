@@ -11,5 +11,5 @@ pub mod trim_spaces;
 pub mod trim;
 pub mod sort;
 
-mod parser;
+pub mod parser;
 mod test_parser;

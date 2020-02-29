@@ -35,3 +35,7 @@ pub(crate) fn new_write(cause: &str, db: Option<String>) -> Result<WriteReply, I
         id: None,
     })
 }
+
+pub(crate) fn new_write_string(cause: String, db: Option<String>) -> Result<WriteReply, Infallible> {
+    return new_write(cause.as_str(), db);
+}

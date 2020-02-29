@@ -9,17 +9,19 @@ pub struct Query {
     pub until_key: Option<String>,
     pub skip: Option<usize>,
     pub direction_forward: Option<bool>,
+    pub channel: Option<String>,
 }
 
 impl Display for Query {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "id: {}\nend: {}\nlimit: {}\nuntil_key: {}\nskip: {}\ndirection_forward: {}\n",
+        write!(f, "id: {}\nend: {}\nlimit: {}\nuntil_key: {}\nskip: {}\ndirection_forward: {}\nchannel: {}\n",
                self.id.clone().unwrap_or_default(),
                self.end.clone().unwrap_or_default(),
                self.limit.clone().unwrap_or_default(),
                self.until_key.clone().unwrap_or_default(),
                self.skip.clone().unwrap_or_default(),
-               self.direction_forward.clone().unwrap_or_default())
+               self.direction_forward.clone().unwrap_or_default(),
+               self.channel.clone().unwrap_or_default())
     }
 }
 

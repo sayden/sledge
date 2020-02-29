@@ -7,28 +7,79 @@ use uuid::Uuid;
 
 use serde_json::Value;
 use crate::server::{errors, responses};
-use crate::server::requests::{InsertQueryReq, Query};
+use crate::server::requests::{Query};
 use crate::components::kv::KV;
 use std::iter::FromIterator;
 use warp::reply::Response;
 use hyper::Body;
-use crate::components::storage;
+use crate::channels::parser::{Channel, parse_and_modify_u8};
 
 
-pub async fn get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>, keyspace: String, key: String)
-                 -> Result<impl Reply, Infallible> {
+pub async fn handler_get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
+                         keyspace: String,
+                         key: String,
+                         req: Query)
+                         -> Result<impl Reply, Infallible>
+{
     let v1_locked = db.lock().await;
     let v1 = v1_locked;
 
-    let data: String = match v1.get(Some(keyspace.clone()), key) {
+    let maybe_channel = match get_channel(&v1, req.channel) {
+        Ok(res) => res,
+        Err(err) => return errors::new_read(err.to_string(), Some("_channel".to_string())),
+    };
+
+    let value: String = match v1.get(Some(keyspace.clone()), key) {
         Err(err) => return errors::new_read(err.to_string(), Some(keyspace)),
         Ok(v) => v,
     };
 
-    let maybe_value = serde_json::from_str::<Value>(data.as_str());
+    let data = match maybe_channel {
+        Some(c) => match parse_and_modify_u8(value.as_ref(), &c) {
+            Ok(v) => Bytes::from(v),
+            Err(err) => return errors::new_read(err.to_string(), Some("_channel".to_string())),
+        },
+        None => Bytes::from(value),
+    };
+
+    let maybe_value = serde_json::from_slice::<Value>(data.as_ref());
     match maybe_value {
         Ok(value) => responses::new_read(Some(Box::new([value])), Some(keyspace)),
         Err(err) => errors::new_read(Error::Serialization(err).to_string(), Some(keyspace)),
+    }
+}
+
+pub async fn handler_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
+                         maybe_path_id: Option<String>,
+                         maybe_query: Option<Query>,
+                         keyspace: String,
+                         req: Bytes)
+                         -> Result<impl Reply, Infallible>
+{
+    let id = match get_id(maybe_query.clone(), maybe_path_id, &req) {
+        None => return errors::new_write("no id found for your document", Some(keyspace)),
+        Some(s) => s,
+    };
+
+    let v1_locked = db.lock().await;
+    let mut v1 = v1_locked;
+
+    let maybe_channel = match get_channel(&v1, maybe_query.and_then(|x|x.channel)) {
+        Ok(res) => res,
+        Err(err) => return errors::new_write_string(err.to_string(), Some("_channel".to_string())),
+    };
+
+    let data = match maybe_channel {
+        Some(c) => match parse_and_modify_u8(req.as_ref(), &c) {
+            Ok(v) => Bytes::from(v),
+            Err(err) => return errors::new_write(err.to_string().as_ref(), Some("_channel".to_string())),
+        },
+        None => req,
+    };
+
+    match v1.put(Some(keyspace.clone()), id.clone(), data) {
+        Ok(_) => responses::new_write(Some(id), Some(keyspace)),
+        Err(err) => errors::new_write(&err.to_string(), Some(keyspace)),
     }
 }
 
@@ -64,11 +115,11 @@ pub async fn start(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
     Ok(Box::new(into_response(byt)))
 }
 
-pub async fn range(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-                   keyspace: String,
-                   id: String,
-                   query: Query)
-                   -> Result<Box<dyn Reply>, Infallible> {
+pub async fn handler_range(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
+                           keyspace: String,
+                           id: String,
+                           query: Query)
+                           -> Result<Box<dyn Reply>, Infallible> {
     let v1 = db.lock().await;
 
     let mut full_query = query;
@@ -91,9 +142,9 @@ pub async fn range(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
     Ok(Box::new(into_response(byt)))
 }
 
-pub async fn since(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-                   keyspace: String)
-                   -> Result<Box<dyn Reply>, Infallible> {
+pub async fn handler_since(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
+                           keyspace: String)
+                           -> Result<Box<dyn Reply>, Infallible> {
     let v1 = db.lock().await;
 
     let iter: Box<dyn Iterator<Item=KV>> = match v1.start(Some(keyspace.clone())) {
@@ -113,28 +164,9 @@ pub async fn since(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
     Ok(Box::new(into_response(byt)))
 }
 
-pub async fn handler_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-                         maybe_path_id: Option<String>,
-                         maybe_query: Option<InsertQueryReq>,
-                         keyspace: String,
-                         req: Bytes)
-                         -> Result<impl Reply, Infallible>
-{
-    let id = match get_id(maybe_query, maybe_path_id, &req) {
-        None => return errors::new_write("no id found for your document", Some(keyspace)),
-        Some(s) => s,
-    };
-
-    let v1_locked = db.lock().await;
-    let mut v1 = v1_locked;
-
-    match v1.put(Some(keyspace.clone()), id.clone(), req) {
-        Ok(_) => responses::new_write(Some(id), Some(keyspace)),
-        Err(err) => errors::new_write(&err.to_string(), Some(keyspace)),
-    }
-}
-
-fn get_id(maybe_query: Option<InsertQueryReq>, maybe_path_id: Option<String>, req: &Bytes) -> Option<String> {
+fn get_id(maybe_query: Option<Query>,
+          maybe_path_id: Option<String>,
+          req: &Bytes) -> Option<String> {
     if (&maybe_query).is_some() && maybe_query.clone().unwrap().id.is_some() {
         let j: Value = serde_json::from_slice(req.as_ref()).ok()?;
         return Some(j[maybe_query?.id?].as_str()?.to_string());
@@ -147,6 +179,22 @@ fn get_id(maybe_query: Option<InsertQueryReq>, maybe_path_id: Option<String>, re
         }
     } else {
         return None; //No ?id= nor /db/{db}/{id} nor /db/{db}/auto so no way to know the ID of this
+    }
+}
+
+fn get_channel(db: &tokio::sync::MutexGuard<'_, Box<dyn Storage + Send + Sync>>,
+               maybe_channel: Option<String>)
+               -> Result<Option<Channel>, Error>
+{
+    match maybe_channel {
+        Some(channel_id) => {
+            let channel_json = db.get(Some("_channel".to_string()), channel_id.clone())?;
+
+            let c = Channel::new(channel_json.as_str())?;
+
+            Ok(Some(c))
+        }
+        None => Ok(None),
     }
 }
 

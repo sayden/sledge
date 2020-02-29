@@ -5,8 +5,6 @@ use crate::storage::stats::Stats;
 use std::str::Utf8Error;
 use std::string::FromUtf8Error;
 use bytes::Bytes;
-use serde::{Serialize, Deserialize};
-use std::fmt::{Display, Formatter};
 use crate::server::requests::Query;
 
 pub type SledgeIterator = dyn Iterator<Item=KV>;
@@ -94,8 +92,12 @@ pub enum Error {
     #[error("error serializing data: {0}")]
     Serialization(#[from] serde_json::Error),
 
+    #[error("error serializing data: {0}")]
+    SerializationString(String),
+
     #[error("id not found in query")]
     WrongQuery,
+
 }
 
 pub fn put_error(cause: String) -> Result<(), Error> {

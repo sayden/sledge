@@ -5,12 +5,10 @@ use std::convert::Infallible;
 use crate::components::storage::Storage;
 use crate::server::databases;
 
-
 use crate::server::databases::handler_put;
 use crate::server::channels::insert_channel;
 use crate::server::management::{healthz, status};
-use crate::server::requests::{InsertQueryReq, Query};
-use crate::components::storage;
+use crate::server::requests::{Query};
 
 /// Filters combined.
 pub fn all(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
@@ -34,7 +32,8 @@ pub fn get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
     warp::path!("db" / String / String)
         .and(warp::get())
         .and(with_db(db))
-        .and_then(|keyspace, key: String, db| databases::get(db, keyspace, key))
+        .and(warp::query::<Query>())
+        .and_then(|keyspace, key: String, db, req| databases::handler_get(db, keyspace, key, req))
 }
 
 /// GET /db/{db}
@@ -54,7 +53,7 @@ pub fn since(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
     warp::path!("db" / String )
         .and(warp::get())
         .and(with_db(db))
-        .and_then(|keyspace, db| databases::since(db, keyspace))
+        .and_then(|keyspace, db| databases::handler_since(db, keyspace))
 }
 
 /**
@@ -70,8 +69,9 @@ pub fn range(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
         .and(warp::post())
         .and(with_db(db))
         .and(warp::query::<Query>())
-        .and_then(|keyspace, id, db, query| databases::range(db, keyspace, id, query))
+        .and_then(|keyspace, id, db, query| databases::handler_range(db, keyspace, id, query))
 }
+
 /**
  * `PUT /db/{db}/{id}?channel={id}`
  * `PUT /db/{db}/_auto?channel={id}`
@@ -81,10 +81,12 @@ pub fn insert_doc(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
     warp::path!("db" / String / String)
         .and(warp::put())
         .and(with_db(db))
-        .and(warp::query::<InsertQueryReq>())
+        .and(warp::query::<Query>())
         .and(warp::body::bytes())
-        .and_then(|keyspace, path_id: String, db, query, body|
-            handler_put(db, path_id.into(), Some(query), keyspace, body))
+        .and_then(|keyspace, path_id: String, db, query, body|{
+                handler_put(db, path_id.into(), Some(query), keyspace, body)
+            }
+        )
 }
 
 /**
@@ -95,7 +97,7 @@ pub fn insert_doc_id_in_json(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send +
     warp::path!("db" / String)
         .and(warp::put())
         .and(with_db(db))
-        .and(warp::query::<InsertQueryReq>())
+        .and(warp::query::<Query>())
         .and(warp::body::bytes())
         .and_then(|keyspace, db, query, body| handler_put(db, None, Some(query), keyspace, body))
 }
