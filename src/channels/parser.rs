@@ -6,8 +6,8 @@ use serde::{Serialize, Deserialize};
 use crate::components::storage::Error;
 
 pub struct Channel {
-    name: String,
-    channel: Vec<Box<dyn Mutator>>,
+    pub name: String,
+    pub channel: Vec<Box<dyn Mutator>>,
 }
 
 #[derive(Serialize, Deserialize)]

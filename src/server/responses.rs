@@ -1,6 +1,7 @@
 use serde_json::Value;
 use serde::{Serialize, Deserialize};
 use std::convert::Infallible;
+use warp::Reply;
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct ResultEmbeddedReply {
@@ -44,13 +45,13 @@ pub(crate) fn new_write(id: Option<String>, db: Option<String>) -> Result<WriteR
     })
 }
 
-pub(crate) fn new_read(data: Option<Box<[Value]>>, db: Option<String>) -> Result<ReadReply, Infallible> {
-    Ok(ReadReply {
+pub(crate) fn new_boxed_read(data: Option<Box<[Value]>>, db: Option<String>) -> Result<Box<dyn Reply>, Infallible> {
+    Ok(Box::new(ReadReply {
         result: ResultEmbeddedReply {
             error: false,
             cause: None,
             db,
         },
         data,
-    })
+    }))
 }

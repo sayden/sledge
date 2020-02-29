@@ -2,7 +2,7 @@
 
 ## Databases
 ### Reading
-#### `GET /db/{db}/{id}?channel={id}`
+#### `GET /db/{db}/{id}[?channel={id}]`
 Returns the record with the specified id.
 
 ##### Example 
@@ -22,8 +22,15 @@ Returns the record with the specified id.
 }
 ```
 
-#### `GET /db/{db}/_since/{id}?channel={id}`
-Returns a never ending feed of records starting from {id}.
+#### `GET /db/{db}/_range/{id}`
+Optional query: `?limit={usize}&skip={usize}&until_key={String}&end={String}&direction_forward={bool}?channel={String}`
+
+Returns a feed of records starting from {id}.
+
+#### `GET /db/{db}/_all`
+Optional query params: `?limit={usize}&skip={usize}&until_key={String}&end={String}&direction_forward={bool}?channel={String}`
+
+Returns a feed of records starting from the very beginning of database `{db}`.
 
 ### Writing
 #### `PUT /db/{db}/{id}?channel={id}`

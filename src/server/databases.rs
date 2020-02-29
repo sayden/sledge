@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use serde_json::Value;
 use crate::server::{errors, responses};
-use crate::server::requests::{Query};
+use crate::server::requests::Query;
 use crate::components::kv::KV;
 use std::iter::FromIterator;
 use warp::reply::Response;
@@ -15,46 +15,102 @@ use hyper::Body;
 use crate::channels::parser::{Channel, parse_and_modify_u8};
 
 
-pub async fn handler_get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-                         keyspace: String,
-                         key: String,
-                         req: Query)
-                         -> Result<impl Reply, Infallible>
+pub async fn handle_get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
+                        keyspace: String,
+                        id: String,
+                        req: Query)
+                        -> Result<impl Reply, Infallible>
 {
-    let v1_locked = db.lock().await;
-    let v1 = v1_locked;
+    let v1 = db.lock().await;
 
     let maybe_channel = match get_channel(&v1, req.channel) {
         Ok(res) => res,
-        Err(err) => return errors::new_read(err.to_string(), Some("_channel".to_string())),
+        Err(err) => return errors::new_boxed_read(err.to_string(), Some("_channel".to_string())),
     };
 
-    let value: String = match v1.get(Some(keyspace.clone()), key) {
-        Err(err) => return errors::new_read(err.to_string(), Some(keyspace)),
+    let value: String = match v1.get(Some(keyspace.clone()), id) {
+        Err(err) => return errors::new_boxed_read(err.to_string(), Some(keyspace)),
         Ok(v) => v,
     };
 
     let data = match maybe_channel {
         Some(c) => match parse_and_modify_u8(value.as_ref(), &c) {
             Ok(v) => Bytes::from(v),
-            Err(err) => return errors::new_read(err.to_string(), Some("_channel".to_string())),
+            Err(err) => return errors::new_boxed_read(err.to_string(), Some("_channel".to_string())),
         },
         None => Bytes::from(value),
     };
 
     let maybe_value = serde_json::from_slice::<Value>(data.as_ref());
     match maybe_value {
-        Ok(value) => responses::new_read(Some(Box::new([value])), Some(keyspace)),
-        Err(err) => errors::new_read(Error::Serialization(err).to_string(), Some(keyspace)),
+        Ok(value) => responses::new_boxed_read(Some(Box::new([value])), Some(keyspace)),
+        Err(err) => errors::new_boxed_read(Error::Serialization(err).to_string(), Some(keyspace)),
     }
 }
 
-pub async fn handler_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-                         maybe_path_id: Option<String>,
-                         maybe_query: Option<Query>,
-                         keyspace: String,
-                         req: Bytes)
-                         -> Result<impl Reply, Infallible>
+pub async fn handle_range(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
+                          keyspace: String,
+                          id: String,
+                          query: Query)
+                          -> Result<Box<dyn Reply>, Infallible> {
+    let v1 = db.lock().await;
+
+    let maybe_channel = match get_channel(&v1, query.clone().channel) {
+        Ok(res) => res,
+        Err(err) => return errors::new_boxed_read(err.to_string(), Some("_channel".to_string())),
+    };
+
+    let mut full_query = query;
+    full_query.id = Some(id);
+
+    let iter: Box<dyn Iterator<Item=KV>> = match v1.range(Some(keyspace.clone()), full_query) {
+        Err(err) => return errors::new_boxed_read(err.to_string(), Some(keyspace)),
+        Ok(x) => x,
+    };
+
+    if maybe_channel.is_some() {
+        let ch = maybe_channel.unwrap();
+        let ch_name = ch.name.clone();
+        let iter2 = iter
+            .map(|x| {
+                match parse_and_modify_u8(x.value.as_ref(), &ch) {
+                    Ok(v) => Vec::from(v),
+                    Err(err) => {
+                        log::warn!("error trying to pass value through channel '{}': {}", ch_name, err.to_string());
+                        x.value
+                    }
+                }
+            })
+            .flat_map(move |x| {
+                let mut v = x;
+
+                v.push('\n' as u8);
+                v.into_iter()
+            });
+
+        let byt = Bytes::from_iter(iter2);
+
+        Ok(Box::new(into_response(byt)))
+    } else {
+        let iter3 = iter.flat_map(move |x| {
+            let mut v = x.value;
+
+            v.push('\n' as u8);
+            v.into_iter()
+        });
+
+        let byt = Bytes::from_iter(iter3);
+
+        Ok(Box::new(into_response(byt)))
+    }
+}
+
+pub async fn handle_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
+                        maybe_path_id: Option<String>,
+                        maybe_query: Option<Query>,
+                        keyspace: String,
+                        req: Bytes)
+                        -> Result<impl Reply, Infallible>
 {
     let id = match get_id(maybe_query.clone(), maybe_path_id, &req) {
         None => return errors::new_write("no id found for your document", Some(keyspace)),
@@ -64,7 +120,7 @@ pub async fn handler_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Syn
     let v1_locked = db.lock().await;
     let mut v1 = v1_locked;
 
-    let maybe_channel = match get_channel(&v1, maybe_query.and_then(|x|x.channel)) {
+    let maybe_channel = match get_channel(&v1, maybe_query.and_then(|x| x.channel)) {
         Ok(res) => res,
         Err(err) => return errors::new_write_string(err.to_string(), Some("_channel".to_string())),
     };
@@ -83,6 +139,29 @@ pub async fn handler_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Syn
     }
 }
 
+pub async fn handle_start(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
+                          keyspace: String,
+                          req: Query)
+                          -> Result<Box<dyn Reply>, Infallible> {
+    let v1 = db.lock().await;
+
+    let iter: Box<dyn Iterator<Item=KV>> = match v1.start(Some(keyspace.clone())) {
+        Err(err) => return errors::new_boxed_read(err.to_string(), Some(keyspace)),
+        Ok(x) => x,
+    };
+
+    let iter2 = iter
+        .flat_map(move |x| {
+            let mut v = x.value;
+            v.push('\n' as u8);
+            v.into_iter()
+        });
+
+    let byt = Bytes::from_iter(iter2);
+
+    Ok(Box::new(into_response(byt)))
+}
+
 fn into_response(byt: Bytes) -> Response {
     ::http::Response::builder()
         .header(
@@ -91,77 +170,6 @@ fn into_response(byt: Bytes) -> Response {
         )
         .body(Body::from(byt))
         .unwrap()
-}
-
-pub async fn start(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-                   keyspace: String)
-                   -> Result<Box<dyn Reply>, Infallible> {
-    let v1 = db.lock().await;
-
-    let iter: Box<dyn Iterator<Item=KV>> = match v1.start(Some(keyspace.clone())) {
-        Err(err) => return errors::new_boxed_read(err.to_string(), Some(keyspace)),
-        Ok(x) => x,
-    };
-
-    let iter2 = iter
-        .flat_map(move |x| {
-            let mut v = x.value;
-            v.push('\n' as u8);
-            v.into_iter()
-        });
-
-    let byt = Bytes::from_iter(iter2);
-
-    Ok(Box::new(into_response(byt)))
-}
-
-pub async fn handler_range(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-                           keyspace: String,
-                           id: String,
-                           query: Query)
-                           -> Result<Box<dyn Reply>, Infallible> {
-    let v1 = db.lock().await;
-
-    let mut full_query = query;
-    full_query.id = Some(id);
-
-    let iter: Box<dyn Iterator<Item=KV>> = match v1.range(Some(keyspace.clone()), full_query) {
-        Err(err) => return errors::new_boxed_read(err.to_string(), Some(keyspace)),
-        Ok(x) => x,
-    };
-
-    let iter2 = iter
-        .flat_map(move |x| {
-            let mut v = x.value;
-            v.push('\n' as u8);
-            v.into_iter()
-        });
-
-    let byt = Bytes::from_iter(iter2);
-
-    Ok(Box::new(into_response(byt)))
-}
-
-pub async fn handler_since(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
-                           keyspace: String)
-                           -> Result<Box<dyn Reply>, Infallible> {
-    let v1 = db.lock().await;
-
-    let iter: Box<dyn Iterator<Item=KV>> = match v1.start(Some(keyspace.clone())) {
-        Err(err) => return errors::new_boxed_read(err.to_string(), Some(keyspace)),
-        Ok(x) => x,
-    };
-
-    let iter2 = iter
-        .flat_map(move |x| {
-            let mut v = x.value;
-            v.push('\n' as u8);
-            v.into_iter()
-        });
-
-    let byt = Bytes::from_iter(iter2);
-
-    Ok(Box::new(into_response(byt)))
 }
 
 fn get_id(maybe_query: Option<Query>,
