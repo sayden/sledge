@@ -1,11 +1,12 @@
-use rocksdb::{DB, ColumnFamily, Options};
+use rocksdb::{DB, ColumnFamily, Options, IteratorMode};
 
 
-use crate::components::storage::{Storage, Error, put_error, create_keyspace_error};
+use crate::components::storage::{Storage, Error, put_error, create_keyspace_error, IterMod};
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 use std::env;
 use bytes::Bytes;
+use crate::server::requests::Query;
 
 pub struct Rocks {
     db: rocksdb::DB,
@@ -92,6 +93,59 @@ impl Storage for Rocks {
     fn end<'a>(&'a self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
         self.rocks_iterator(maybe_keyspace, rocksdb::IteratorMode::End)
     }
+
+    fn range<'a>(&'a self, maybe_keyspace: Option<String>, query: Query)
+                 -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+        let cf = self.get_column_family(maybe_keyspace)?;
+
+        let mut itermods = Vec::new();
+        if query.skip.is_some() {
+            log::info!("found skip");
+            itermods.push(IterMod::Skip(query.skip.unwrap()))
+        }
+        if query.limit.is_some() {
+            log::info!("found limit");
+            itermods.push(IterMod::Limit(query.limit.unwrap()))
+        }
+        if query.until_key.is_some() {
+            log::info!("found until_key");
+            itermods.push(IterMod::UntilKey(query.until_key.unwrap()))
+        }
+
+        let id = query.id.ok_or(Error::WrongQuery)?;
+
+        //Check direction of the range query
+        let mode = IteratorMode::From(id.as_bytes(), match query.direction_forward {
+            Some(v) => match v {
+                true => rocksdb::Direction::Forward,
+                false => rocksdb::Direction::Reverse,
+            },
+            None => rocksdb::Direction::Forward,
+        });
+
+        //Perform query to db to get iterator
+        let db_iter = match cf {
+            Some(cf) => self.db.iterator_cf(cf, mode)
+                .or_else(|err| Err(Error::Iterator(err.to_string()))),
+            None => Ok(self.db.iterator(mode)),
+        }?;
+
+        let iter: Box<dyn Iterator<Item=(Box<[u8]>, Box<[u8]>)>> = Box::new(db_iter);
+
+        let res = itermods.into_iter()
+            .fold(iter, |acc, x| {
+                match x {
+                    IterMod::Limit(limit) => Box::new(Iterator::take(acc, limit)),
+                    IterMod::Skip(skip) => Box::new(Iterator::skip(acc, skip)),
+                    IterMod::UntilKey(key) => Box::new(
+                        Iterator::take_while(acc, move |x|
+                            x.0.to_vec() != key.as_bytes().to_vec())),
+                }
+            });
+
+        Ok(Box::new(res.map(tuplebox_to_kv)))
+    }
+
 
     fn since<'a>(&'a self, maybe_keyspace: Option<String>, k: String)
                  -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {

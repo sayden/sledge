@@ -1,4 +1,3 @@
-use warp::reply::Response;
 use serde_json::Value;
 use serde::{Serialize, Deserialize};
 use std::convert::Infallible;
@@ -17,8 +16,8 @@ pub(crate) struct ReadReply {
 }
 
 impl warp::Reply for ReadReply {
-    fn into_response(self) -> Response {
-        Response::new(serde_json::to_string(&self).unwrap().into())
+    fn into_response(self) -> warp::reply::Response {
+        warp::reply::Response::new(serde_json::to_string(&self).unwrap().into())
     }
 }
 
@@ -29,8 +28,8 @@ pub(crate) struct WriteReply {
 }
 
 impl warp::Reply for WriteReply {
-    fn into_response(self) -> Response {
-        Response::new(serde_json::to_string(&self).unwrap().into())
+    fn into_response(self) -> warp::reply::Response {
+        warp::reply::Response::new(serde_json::to_string(&self).unwrap().into())
     }
 }
 

@@ -5,6 +5,7 @@ use crate::storage::stats::Stats;
 use std::ops::Deref;
 use std::env;
 use bytes::Bytes;
+use crate::server::requests::Query;
 
 pub struct Sled {
     db: sled::Db,
@@ -59,6 +60,10 @@ impl Storage for Sled {
     }
 
     fn end(&self, _maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+        unimplemented!()
+    }
+
+    fn range<'a>(&'a self, keyspace: Option<String>, query: Query) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
         unimplemented!()
     }
 

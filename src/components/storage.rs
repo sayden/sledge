@@ -5,9 +5,17 @@ use crate::storage::stats::Stats;
 use std::str::Utf8Error;
 use std::string::FromUtf8Error;
 use bytes::Bytes;
-
+use serde::{Serialize, Deserialize};
+use std::fmt::{Display, Formatter};
+use crate::server::requests::Query;
 
 pub type SledgeIterator = dyn Iterator<Item=KV>;
+
+pub enum IterMod {
+    Skip(usize),
+    Limit(usize),
+    UntilKey(String),
+}
 
 /**
 * Types of range operations:
@@ -19,19 +27,6 @@ pub type SledgeIterator = dyn Iterator<Item=KV>;
 * backwards from key down to a key found (or limit)
 * backwards from key, infinite
 * backwards from key, infinite until signal
-*
-* Examples:
-* since("my_key", Bound::Infinite)
-* since("my_key", Bound::Limit(100))
-* since("my_key", Bound::Key("stop_in_this_key"))
-* since("my_key", Bound::Key("stop_in_this_key"), Bound::Limit(10))
-* since("my_key", Bound::Key("stop_in_this_key"), Bound::KV(KV{key:"stop_if_this_key",value:"has_this_value"))
-*
-* backwards("my_key", Bound::Infinite)
-* backwards("my_key", Bound::Limit(100))
-* backwards("my_key", Bound::Key("stop_in_this_key"))
-* backwards("my_key", Bound::Key("stop_in_this_key"), Bound::Limit(10))
-* backwards("my_key", Bound::Key("stop_in_this_key"), Bound::KV(KV{key:"stop_if_this_key",value:"has_this_value"))
 */
 pub trait Storage {
     fn get(&self, keyspace: Option<String>, s: String) -> Result<String, Error>;
@@ -41,6 +36,7 @@ pub trait Storage {
     fn start<'a>(&'a self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
     fn end<'a>(&'a self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
 
+    fn range<'a>(&'a self, keyspace: Option<String>, query: Query) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
     fn since<'a>(&'a self, keyspace: Option<String>, k: String) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
     fn since_until<'a>(&'a self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
 
@@ -97,12 +93,15 @@ pub enum Error {
 
     #[error("error serializing data: {0}")]
     Serialization(#[from] serde_json::Error),
+
+    #[error("id not found in query")]
+    WrongQuery,
 }
 
 pub fn put_error(cause: String) -> Result<(), Error> {
     Err(Error::Put(cause))
 }
 
-pub fn create_keyspace_error(name:String, cause: String) -> Result<(), Error> {
+pub fn create_keyspace_error(name: String, cause: String) -> Result<(), Error> {
     Err(Error::CannotCreateKeyspace(name, cause))
 }
