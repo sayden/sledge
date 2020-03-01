@@ -1,17 +1,19 @@
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, Map};
-use anyhow::Error;
-use crate::channels::remove::Remove;
-use crate::channels::append::Append;
-use crate::channels::rename::Rename;
-use crate::channels::join::Join;
-use crate::channels::upper_lower_case::UpperLowercase;
-use crate::channels::set::Set;
-use crate::channels::split::Split;
-use crate::channels::trim_spaces::TrimSpaces;
-use crate::channels::trim::Trim;
-use crate::channels::sort::Sort;
 use std::str::FromStr;
+
+use anyhow::Error;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+
+use crate::channels::append::Append;
+use crate::channels::join::Join;
+use crate::channels::remove::Remove;
+use crate::channels::rename::Rename;
+use crate::channels::set::Set;
+use crate::channels::sort::Sort;
+use crate::channels::split::Split;
+use crate::channels::trim::Trim;
+use crate::channels::trim_spaces::TrimSpaces;
+use crate::channels::upper_lower_case::UpperLowercase;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Mutation {
@@ -99,8 +101,10 @@ pub fn factory(v: Value) -> Option<Box<dyn Mutator>> {
             rename: v["new_name"].as_str()?.to_string(),
         })),
         MutatorType::Join => Some(Box::new(Join {
-            modifier: Mutation { type_: type_.to_string(), field: v["field"].as_str()?.to_string() },
+            type_: type_.to_string(),
+            field: v["field"].clone(),
             separator: v["separator"].as_str()?.to_string(),
+            new_field: v["new_field"].as_str().unwrap_or_default().to_string(),
         })),
         MutatorType::Lowercase => Some(Box::new(
             UpperLowercase {

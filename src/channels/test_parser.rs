@@ -1,10 +1,14 @@
+use std::process::exit;
+
 #[test]
 fn test_parser() {
     #[cfg(test)]
-    use crate::channels::parser::{Channel};
+    use crate::channels::parser::Channel;
     use crate::channels::parser::parse_and_modify_u8;
 
-    let data = r#"{"name":"John Doe","age":43,"delete":"this","phones":["+44 1234567","+44 2345678"],"phones_uk":["+44 1234567","+44 2345678"],"to_sort":[4,3,8],"to_sort_s":["were","asdasd","qweqw"]                  }"#;
+    env_logger::init();
+
+    let data = r#"{"name":"John", "surname": "Doe", "age":43,"delete":"this","phones":["+44 1234567","+44 2345678"],"phones_uk":["+44 1234567","+44 2345678"],"to_sort":[4,3,8],"to_sort_s":["were","asdasd","qweqw"]                  }"#;
 
     let mutators_json_array = r#"{
         "name": "my_channel",
@@ -14,14 +18,20 @@ fn test_parser() {
                 "field": "delete"
             },
             {
+                "type": "join",
+                "field": ["name", "surname"],
+                "separator": " ",
+                "new_field": "full_name"
+            },
+            {
                 "type": "append",
-                "field": "name",
+                "field": "full_name",
                 "append": " hello   "
             },
             {
                 "type": "rename",
-                "field": "name",
-                "new_name": "name_hello"
+                "field": "full_name",
+                "new_name": "full_name_hello"
             },
             {
                 "type": "join",
@@ -30,7 +40,7 @@ fn test_parser() {
             },
             {
                 "type": "lowercase",
-                "field": "name_hello"
+                "field": "full_name_hello"
             },
             {
                 "type": "set",
@@ -39,11 +49,11 @@ fn test_parser() {
             },
             {
                 "type": "trim_space",
-                "field": "name_hello"
+                "field": "full_name_hello"
             },
             {
                 "type": "split",
-                "field": "name_hello",
+                "field": "full_name_hello",
                 "separator": " "
             },
             {
@@ -65,12 +75,12 @@ fn test_parser() {
         ]
     }"#;
 
-    let expected = Vec::from(r#"{"age":43,"my_field":"_value","name_hello":["john","doe","hello"],"phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#);
+    let expected = Vec::from(r#"{"age":43,"full_name_hello":["john","doe","hello"],"my_field":"_value","name":"John","phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","surname":"Doe","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#);
 
     let channel = Channel::new(mutators_json_array).unwrap();
 
-    for _ in 0..10 {
-        let res = parse_and_modify_u8(data.as_bytes(), &channel);
-        assert_eq!(expected, res.unwrap())
-    }
+    let res = parse_and_modify_u8(data.as_bytes(), &channel);
+    let a = std::str::from_utf8(res.unwrap().as_ref()).unwrap().to_string();
+    let b = std::str::from_utf8(expected.as_ref()).unwrap().to_string();
+    assert_eq!(a, b)
 }
