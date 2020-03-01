@@ -1,11 +1,11 @@
-use crate::storage::sled::Sled;
-use crate::storage::rocks::Rocks;
+// use crate::storage::sled::Sled;
+use bytes::Bytes;
 use crate::components::kv::KV;
+use crate::server::requests::Query;
+use crate::storage::rocks::Rocks;
 use crate::storage::stats::Stats;
 use std::str::Utf8Error;
 use std::string::FromUtf8Error;
-use bytes::Bytes;
-use crate::server::requests::Query;
 
 pub enum IterMod {
     Skip(usize),
@@ -13,8 +13,9 @@ pub enum IterMod {
     UntilKey(String),
 }
 
-pub type StorageIter<'a> = Box<dyn Iterator<Item=KV> + 'a>;
-pub type ValueIter<'a> = Box<dyn Iterator<Item=Vec<u8>> + 'a>;
+pub type StorageIter<'a> = Box<dyn Iterator<Item=KV> + Send + Sync + 'a>;
+pub type VecIter<'a> = Box<dyn Iterator<Item=Vec<u8>> + 'a + Send + Sync>;
+pub type ConcurrentStorage = Box<dyn Storage + Send + Sync>;
 
 pub trait Storage {
     fn get(&self, keyspace: Option<String>, s: String) -> Result<String, Error>;
@@ -37,8 +38,8 @@ pub trait Storage {
 
 pub fn get_storage(s: &str, p: &str) -> Box<dyn Storage + Send + Sync> {
     match s {
-        "sled" => box Sled::new(p.to_string()),
-        "rocksdb" => box Rocks::new(p.to_string()),
+        // "sled" => box Sled::new_storage(p.to_string()),
+        "rocksdb" => box Rocks::new_storage(p.to_string()),
         // "memory" => Memory::new(),
         _ => panic!("storage '{}' not found", s),
     }

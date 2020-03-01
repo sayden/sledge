@@ -20,7 +20,7 @@ pub struct Mutation {
     pub field: String,
 }
 
-pub trait Mutator {
+pub trait Mutator: Send + Sync {
     fn mutate(&self, v: &mut Map<String, Value>) -> Option<Error>;
 }
 

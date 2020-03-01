@@ -10,7 +10,7 @@ use warp::{Reply, Stream};
 use warp::reply::Response;
 
 use crate::channels::parser::{Channel, parse_and_modify_u8};
-use crate::components::storage::{Error, Storage, StorageIter, ValueIter};
+use crate::components::storage::{Error, Storage, StorageIter, VecIter};
 use crate::server::{errors, responses};
 use crate::server::requests::Query;
 
@@ -86,9 +86,9 @@ pub fn process_kvs_with_ch(i: StorageIter, maybe_channel: Option<Channel>) -> Ve
                     log::warn!("error trying to pass value through channel '{}': {}", ch_name, err.to_string());
                     x.value
                 })
-        }) as ValueIter
+        }) as VecIter
     } else {
-        box i.map(|kv| kv.value) as ValueIter
+        box i.map(|kv| kv.value) as VecIter
     };
 
     channelized_iter.flat_map(move |mut x| {
