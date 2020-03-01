@@ -46,8 +46,8 @@ pub trait Storage {
 
 pub fn get_storage(s: &str, p: &str) -> Box<dyn Storage + Send + Sync> {
     match s {
-        "sled" => Box::new(Sled::new(p.to_string())),
-        "rocksdb" => Box::new(Rocks::new(p.to_string())),
+        "sled" => box Sled::new(p.to_string()),
+        "rocksdb" => box Rocks::new(p.to_string()),
         // "memory" => Memory::new(),
         _ => panic!("storage '{}' not found", s),
     }
