@@ -1,5 +1,5 @@
 use sled::{IVec, Tree};
-use crate::components::storage::{Storage, SledgeIterator, Error};
+use crate::components::storage::{Storage, Error, StorageIter};
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 use std::ops::Deref;
@@ -53,41 +53,41 @@ impl Storage for Sled {
             .and(Ok(()))
     }
 
-    fn start(&self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn start(&self, maybe_keyspace: Option<String>) -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let ranged = tree.scan_prefix("");
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn end(&self, _maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn end(&self, _maybe_keyspace: Option<String>) -> Result<StorageIter, Error> {
         unimplemented!()
     }
 
-    fn range<'a>(&'a self, _keyspace: Option<String>, _query: Query) -> Result<Box<dyn Iterator<Item=KV>>, Error> {
+    fn range(&self, _keyspace: Option<String>, _query: Query) -> Result<StorageIter, Error> {
         unimplemented!()
     }
 
-    fn since(&self, maybe_keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
+    fn since(&self, maybe_keyspace: Option<String>, k: String) -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let ranged = tree.range(k..);
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
     fn since_until(&self, maybe_keyspace: Option<String>, k1: String, k2: String)
-                   -> Result<Box<SledgeIterator>, Error> {
+                   -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let result = tree.range(k1..k2);
         Ok(Box::new(result.filter_map(|x| Sled::parse_range(x))))
     }
 
-    fn reverse(&self, maybe_keyspace: Option<String>, k: String) -> Result<Box<SledgeIterator>, Error> {
+    fn reverse(&self, maybe_keyspace: Option<String>, k: String) -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let ranged = tree.range(k..).rev();
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
     }
 
     fn reverse_until(&self, maybe_keyspace: Option<String>, k1: String, k2: String)
-                     -> Result<Box<SledgeIterator>, Error> {
+                     -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let ranged = tree.range(k1..k2).rev();
         Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))

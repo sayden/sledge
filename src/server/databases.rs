@@ -1,19 +1,18 @@
+#[deny(soft_unstable)]
 use std::convert::Infallible;
-use warp::Reply;
 use std::sync::Arc;
-use crate::components::storage::{Storage, Error};
-use bytes::Bytes;
-use uuid::Uuid;
 
+use bytes::Bytes;
+use hyper::Body;
 use serde_json::Value;
+use uuid::Uuid;
+use warp::{Reply, Stream};
+use warp::reply::Response;
+
+use crate::channels::parser::{Channel, parse_and_modify_u8};
+use crate::components::storage::{Error, Storage, StorageIter, ValueIter};
 use crate::server::{errors, responses};
 use crate::server::requests::Query;
-use crate::components::kv::KV;
-use std::iter::FromIterator;
-use warp::reply::Response;
-use hyper::Body;
-use crate::channels::parser::{Channel, parse_and_modify_u8};
-
 
 pub async fn handle_get(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
                         keyspace: String,
@@ -63,46 +62,61 @@ pub async fn handle_range(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sy
     let mut full_query = query;
     full_query.id = Some(id);
 
-    let iter: Box<dyn Iterator<Item=KV>> = match v1.range(Some(keyspace.clone()), full_query) {
+    let iter: StorageIter = match v1.range(Some(keyspace.clone()), full_query) {
         Err(err) => return errors::new_boxed_read(err.to_string(), Some(keyspace)),
         Ok(x) => x,
     };
 
-    if maybe_channel.is_some() {
-        let ch = maybe_channel.unwrap();
-        let ch_name = ch.name.clone();
-        let iter2 = iter
-            .map(|x| {
-                match parse_and_modify_u8(x.value.as_ref(), &ch) {
-                    Ok(v) => Vec::from(v),
-                    Err(err) => {
-                        log::warn!("error trying to pass value through channel '{}': {}", ch_name, err.to_string());
-                        x.value
-                    }
-                }
-            })
-            .flat_map(move |x| {
-                let mut v = x;
+    let byt = process_kvs_with_ch(iter, maybe_channel);
 
-                v.push('\n' as u8);
-                v.into_iter()
-            });
+    Ok(Box::new(into_response(byt)))
+}
 
-        let byt = Bytes::from_iter(iter2);
+pub fn process_kvs_with_ch(i: StorageIter, maybe_channel: Option<Channel>) -> Vec<u8> {
+    let ch: Channel;
+    let ch_name: String;
 
-        Ok(Box::new(into_response(byt)))
+    let channelized_iter = if maybe_channel.is_some() {
+        ch = maybe_channel.unwrap();
+        ch_name = ch.name.clone();
+
+        box i.map(|x| {
+            parse_and_modify_u8(x.value.as_ref(), &ch)
+                .unwrap_or_else(|err| {
+                    log::warn!("error trying to pass value through channel '{}': {}", ch_name, err.to_string());
+                    x.value
+                })
+        }) as ValueIter
     } else {
-        let iter3 = iter.flat_map(move |x| {
-            let mut v = x.value;
+        box i.map(|kv| kv.value) as ValueIter
+    };
 
-            v.push('\n' as u8);
-            v.into_iter()
-        });
+    channelized_iter.flat_map(move |mut x| {
+        x.push('\n' as u8);
+        x
+    }).collect::<Vec<u8>>()//TODO Avoid this collect? Body::from has this `impl From<Box<dyn Stream<Item = Result<Bytes, Box<dyn StdError + Send + Sync>>> + Send + Sync>>`
+}
 
-        let byt = Bytes::from_iter(iter3);
+fn into_response(v: Vec<u8>) -> Response {
+    ::http::Response::builder()
+        .header(
+            "Content-Type",
+            "application/octet-stream",
+        )
+        .body(Body::from(v))
+        .unwrap()
+}
 
-        Ok(Box::new(into_response(byt)))
-    }
+fn into_future_response(i: Box<dyn Iterator<Item=Vec<u8>> + Send + Sync>) -> Response {
+    let v: Box<dyn Stream<Item=Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + Sync> =
+        box futures::stream::iter(i.map(|iv| Ok(Bytes::from(iv))));
+    ::http::Response::builder()
+        .header(
+            "Content-Type",
+            "application/octet-stream",
+        )
+        .body(Body::from(v))
+        .unwrap()
 }
 
 pub async fn handle_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>,
@@ -145,31 +159,18 @@ pub async fn handle_start(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sy
                           -> Result<Box<dyn Reply>, Infallible> {
     let v1 = db.lock().await;
 
-    let iter: Box<dyn Iterator<Item=KV>> = match v1.start(Some(keyspace.clone())) {
+    let iter = match v1.start(Some(keyspace.clone())) {
         Err(err) => return errors::new_boxed_read(err.to_string(), Some(keyspace)),
         Ok(x) => x,
-    };
-
-    let iter2 = iter
+    }
         .flat_map(move |x| {
             let mut v = x.value;
             v.push('\n' as u8);
             v.into_iter()
-        });
+        })
+        .collect::<Vec<u8>>();
 
-    let byt = Bytes::from_iter(iter2);
-
-    Ok(Box::new(into_response(byt)))
-}
-
-fn into_response(byt: Bytes) -> Response {
-    ::http::Response::builder()
-        .header(
-            "Content-Type",
-            "application/octet-stream",
-        )
-        .body(Body::from(byt))
-        .unwrap()
+    Ok(Box::new(into_response(iter)))
 }
 
 fn get_id(maybe_query: Option<Query>,
@@ -212,8 +213,17 @@ fn test_get_key() {
     let byt = Bytes::new();
     let s = r#"{"my_key":"my_value"}"#;
     let bytes_with_content = Bytes::from(s);
-    assert_eq!(get_id(Some(InsertQueryReq { id: Some("my_key".to_string()), channel: None }), None, &byt), None);
-    assert_eq!(get_id(Some(InsertQueryReq { id: Some("my_key".to_string()), channel: None }), Some("hello".to_string()),
+    assert_eq!(get_id(Some(Query {
+        id: Some("my_key".to_string()),
+        end: None,
+        limit: None,
+        until_key: None,
+        skip: None,
+        direction_forward: None
+        ,
+        channel: None,
+    }), None, &byt), None);
+    assert_eq!(get_id(Some(Query { id: Some("my_key".to_string()), end: None, limit: None, until_key: None, skip: None, direction_forward: None, channel: None }), Some("hello".to_string()),
                       &bytes_with_content), Some("my_value".to_string()));
     assert_eq!(get_id(None, Some("my_key2".to_string()), &byt), Some("my_key2".to_string()));
     assert_eq!(get_id(None, Some("my_key2".to_string()), &byt), Some("my_key2".to_string()));

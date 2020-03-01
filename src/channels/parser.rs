@@ -35,11 +35,6 @@ impl Deref for Channel {
     }
 }
 
-pub fn parse_and_modify_str(json_data: &str, mods: &Channel) -> Result<Vec<u8>, Error> {
-    let p: Value = serde_json::from_str(json_data).or_else(|err| Err(Error::Serialization(err)))?;
-    parse_and_modify(p, mods)
-}
-
 pub fn parse_and_modify_u8(json_data: &[u8], mods: &Channel) -> Result<Vec<u8>, Error> {
     let p: Value = serde_json::from_slice(json_data).or_else(|err| Err(Error::Serialization(err)))?;
     parse_and_modify(p, mods)

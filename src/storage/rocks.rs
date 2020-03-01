@@ -1,7 +1,7 @@
 use rocksdb::{DB, ColumnFamily, Options, IteratorMode};
 
 
-use crate::components::storage::{Storage, Error, put_error, create_keyspace_error, IterMod};
+use crate::components::storage::{Storage, Error, put_error, create_keyspace_error, IterMod, StorageIter};
 use crate::components::kv::KV;
 use crate::storage::stats::Stats;
 use std::env;
@@ -86,16 +86,15 @@ impl Storage for Rocks {
             .or_else(|err| Err(Error::CannotCreateKeyspace(name, err.to_string())))
     }
 
-    fn start<'a>(&'a self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+    fn start(&self, maybe_keyspace: Option<String>) -> Result<StorageIter, Error> {
         self.rocks_iterator(maybe_keyspace, rocksdb::IteratorMode::Start)
     }
 
-    fn end<'a>(&'a self, maybe_keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+    fn end(&self, maybe_keyspace: Option<String>) -> Result<StorageIter, Error> {
         self.rocks_iterator(maybe_keyspace, rocksdb::IteratorMode::End)
     }
 
-    fn range<'a>(&'a self, maybe_keyspace: Option<String>, query: Query)
-                 -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+    fn range(&self, maybe_keyspace: Option<String>, query: Query) -> Result<StorageIter, Error> {
         let cf = self.get_column_family(maybe_keyspace)?;
 
         let mut itermods = Vec::new();
@@ -147,14 +146,14 @@ impl Storage for Rocks {
     }
 
 
-    fn since<'a>(&'a self, maybe_keyspace: Option<String>, k: String)
-                 -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+    fn since(&self, maybe_keyspace: Option<String>, k: String)
+             -> Result<StorageIter, Error> {
         self.rocks_iterator(maybe_keyspace,
                             rocksdb::IteratorMode::From(k.as_bytes(), rocksdb::Direction::Forward))
     }
 
-    fn since_until<'a>(&'a self, maybe_keyspace: Option<String>, k: String, k2: String)
-                       -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+    fn since_until(&self, maybe_keyspace: Option<String>, k: String, k2: String)
+                   -> Result<StorageIter, Error> {
         let res = self.rocks_iterator(
             maybe_keyspace,
             rocksdb::IteratorMode::From(k.as_bytes(), rocksdb::Direction::Forward))
@@ -164,15 +163,15 @@ impl Storage for Rocks {
         Ok(Box::new(res))
     }
 
-    fn reverse<'a>(&'a self, _maybe_keyspace: Option<String>, k: String)
-                   -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+    fn reverse(&self, _maybe_keyspace: Option<String>, k: String)
+               -> Result<StorageIter, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k.as_bytes(),
                                                                    rocksdb::Direction::Reverse));
         Ok(Box::new(db_iter.map(tuplebox_to_kv)))
     }
 
-    fn reverse_until<'a>(&'a self, _maybe_keyspace: Option<String>, k1: String, k2: String)
-                         -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+    fn reverse_until(&self, _maybe_keyspace: Option<String>, k1: String, k2: String)
+                     -> Result<StorageIter, Error> {
         let db_iter = self.db.iterator(rocksdb::IteratorMode::From(k1.as_bytes(),
                                                                    rocksdb::Direction::Reverse));
         Ok(Box::new(db_iter.map(tuplebox_to_kv)
@@ -198,8 +197,8 @@ impl Rocks {
         }
     }
 
-    fn rocks_iterator<'a>(&'a self, maybe_keyspace: Option<String>, mode: rocksdb::IteratorMode)
-                          -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error> {
+    fn rocks_iterator(&self, maybe_keyspace: Option<String>, mode: rocksdb::IteratorMode)
+                      -> Result<StorageIter, Error> {
         let cf = self.get_column_family(maybe_keyspace)?;
 
         let db_iter = match cf {

@@ -7,39 +7,30 @@ use std::string::FromUtf8Error;
 use bytes::Bytes;
 use crate::server::requests::Query;
 
-pub type SledgeIterator = dyn Iterator<Item=KV>;
-
 pub enum IterMod {
     Skip(usize),
     Limit(usize),
     UntilKey(String),
 }
 
-/**
-* Types of range operations:
-* (window) since upper bounded with a limit based on count
-* (window) since upper bounded with a limit on a key found (or limit)
-* since: infinite, no stop if possible
-* since: infinite until signal
-* backwards from key down to a limit based on count
-* backwards from key down to a key found (or limit)
-* backwards from key, infinite
-* backwards from key, infinite until signal
-*/
+pub type StorageIter<'a> = Box<dyn Iterator<Item=KV> + 'a>;
+pub type ValueIter<'a> = Box<dyn Iterator<Item=Vec<u8>> + 'a>;
+
 pub trait Storage {
     fn get(&self, keyspace: Option<String>, s: String) -> Result<String, Error>;
     fn put(&mut self, keyspace: Option<String>, k: String, v: Bytes) -> Result<(), Error>;
     fn create_keyspace(&mut self, name: String) -> Result<(), Error>;
 
-    fn start<'a>(&'a self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
-    fn end<'a>(&'a self, keyspace: Option<String>) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
+    fn start(&self, keyspace: Option<String>) -> Result<StorageIter, Error>;
+    fn end(&self, keyspace: Option<String>) -> Result<StorageIter, Error>;
 
-    fn range<'a>(&'a self, keyspace: Option<String>, query: Query) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
-    fn since<'a>(&'a self, keyspace: Option<String>, k: String) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
-    fn since_until<'a>(&'a self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
+    fn range(&self, keyspace: Option<String>, query: Query) -> Result<StorageIter, Error>;
 
-    fn reverse<'a>(&'a self, keyspace: Option<String>, k: String) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
-    fn reverse_until<'a>(&'a self, keyspace: Option<String>, k1: String, k2: String) -> Result<Box<dyn Iterator<Item=KV> + 'a>, Error>;
+    fn since(&self, keyspace: Option<String>, k: String) -> Result<StorageIter, Error>;
+    fn since_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<StorageIter, Error>;
+
+    fn reverse(&self, keyspace: Option<String>, k: String) -> Result<StorageIter, Error>;
+    fn reverse_until(&self, keyspace: Option<String>, k1: String, k2: String) -> Result<StorageIter, Error>;
 
     fn stats(&self) -> Stats;
 }

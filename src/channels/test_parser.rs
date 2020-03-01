@@ -1,5 +1,6 @@
 #[cfg(test)]
-use crate::channels::parser::{Channel, parse_and_modify_str};
+use crate::channels::parser::{Channel};
+use crate::channels::parser::parse_and_modify_u8;
 
 #[test]
 fn test_parser() {
@@ -69,7 +70,7 @@ fn test_parser() {
     let channel = Channel::new(mutators_json_array).unwrap();
 
     for _ in 0..10 {
-        let res = parse_and_modify_str(data, &channel);
+        let res = parse_and_modify_u8(data.as_bytes(), &channel);
         assert_eq!(expected, res.unwrap())
     }
 }
