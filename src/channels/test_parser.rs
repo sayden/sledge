@@ -1,5 +1,3 @@
-use std::process::exit;
-
 #[test]
 fn test_parser() {
     #[cfg(test)]
@@ -22,6 +20,11 @@ fn test_parser() {
                 "field": ["name", "surname"],
                 "separator": " ",
                 "new_field": "full_name"
+            },
+            {
+                "type":"grok",
+                "field":"full_name",
+                "pattern": "%{WORD:grok_first} %{WORD:grok_second}"
             },
             {
                 "type": "append",
@@ -75,7 +78,7 @@ fn test_parser() {
         ]
     }"#;
 
-    let expected = Vec::from(r#"{"age":43,"full_name_hello":["john","doe","hello"],"my_field":"_value","name":"John","phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","surname":"Doe","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#);
+    let expected = Vec::from(r#"{"age":43,"full_name_hello":["john","doe","hello"],"grok_first":"John","grok_second":"Doe","my_field":"_value","name":"John","phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","surname":"Doe","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#);
 
     let channel = Channel::new(mutators_json_array).unwrap();
 

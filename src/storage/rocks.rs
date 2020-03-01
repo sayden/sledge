@@ -14,25 +14,26 @@ pub struct Rocks {
 }
 
 impl Rocks {
-    pub fn new(path: String) -> impl Storage + Send + Sync {
+    pub fn new_storage(path: String) -> impl Storage + Send + Sync {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         let create_if_missing = env::var("ROCKSDB_CREATE_CF_IF_MISSING")
-            .unwrap_or("true".to_string()) == "true";
+            .unwrap_or_else(|_|"true".to_string()) == "true";
 
         match DB::list_cf(&opts, path.clone()) {
             Ok(cfs) => {
-                match DB::open_cf(&opts, path.clone(), cfs) {
-                    Ok(db) => return Rocks { db, create_cf_if_missing: create_if_missing },
+                match DB::open_cf(&opts, path, cfs) {
+                    Ok(db) => Rocks { db, create_cf_if_missing: create_if_missing },
                     Err(err) => panic!(err),
                 }
             }
             Err(e) => {
                 log::warn!("{}", e.to_string());
-                let db = DB::open(&opts, path.clone()).unwrap();
-                return Rocks { db, create_cf_if_missing: create_if_missing };
+                let db = DB::open(&opts, path).unwrap();
+                Rocks { db, create_cf_if_missing: create_if_missing 
+                }
             }
-        };
+        }
     }
 }
 
@@ -129,7 +130,7 @@ impl Storage for Rocks {
             None => Ok(self.db.iterator(mode)),
         }?;
 
-        let iter: Box<dyn Iterator<Item=(Box<[u8]>, Box<[u8]>)>> = Box::new(db_iter);
+        let iter: Box<dyn Iterator<Item=(Box<[u8]>, Box<[u8]>)> + Send + Sync> = Box::new(db_iter);
 
         let res = itermods.into_iter()
             .fold(iter, |acc, x| {

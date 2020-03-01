@@ -13,7 +13,7 @@ pub struct Sled {
 }
 
 impl Sled {
-    pub fn new(p: String) -> impl Storage + Send + Sync {
+    pub fn new_storage(p: String) -> impl Storage + Send + Sync {
         let db = sled::open(p).unwrap();
         let create_tree = match env::var("FEEDB_CREATE_TREE_IF_MISSING") {
             Ok(res) => res == "true",
@@ -35,7 +35,7 @@ impl Storage for Sled {
             Some(v) => std::str::from_utf8(v.as_ref())
                 .or_else(|err| Err(Error::Parse(err)))
                 .and_then(|res| Ok(res.to_string())),
-            None => return Err(Error::ValueNotFound(s)),
+            None => Err(Error::ValueNotFound(s)),
         }
     }
 
@@ -54,9 +54,10 @@ impl Storage for Sled {
     }
 
     fn start(&self, maybe_keyspace: Option<String>) -> Result<StorageIter, Error> {
-        let tree = self.get_tree(maybe_keyspace)?;
-        let ranged = tree.scan_prefix("");
-        Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
+        unimplemented!()
+        // let tree = self.get_tree(maybe_keyspace)?;
+        // let ranged = tree.scan_prefix("");
+        // Ok(Box::new(ranged.filter_map(Sled::parse_range)))
     }
 
     fn end(&self, _maybe_keyspace: Option<String>) -> Result<StorageIter, Error> {
@@ -70,27 +71,28 @@ impl Storage for Sled {
     fn since(&self, maybe_keyspace: Option<String>, k: String) -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let ranged = tree.range(k..);
-        Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
+        let iter: Box<dyn Iterator<Item=sled::Result<(IVec, IVec)>> + Send + Sync> = box ranged;
+        Ok(Box::new(iter.filter_map(Sled::parse_range)))
     }
 
     fn since_until(&self, maybe_keyspace: Option<String>, k1: String, k2: String)
                    -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let result = tree.range(k1..k2);
-        Ok(Box::new(result.filter_map(|x| Sled::parse_range(x))))
+        Ok(Box::new(result.filter_map(Sled::parse_range)))
     }
 
     fn reverse(&self, maybe_keyspace: Option<String>, k: String) -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let ranged = tree.range(k..).rev();
-        Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
+        Ok(Box::new(ranged.filter_map(Sled::parse_range)))
     }
 
     fn reverse_until(&self, maybe_keyspace: Option<String>, k1: String, k2: String)
                      -> Result<StorageIter, Error> {
         let tree = self.get_tree(maybe_keyspace)?;
         let ranged = tree.range(k1..k2).rev();
-        Ok(Box::new(ranged.filter_map(|x| Sled::parse_range(x))))
+        Ok(Box::new(ranged.filter_map(Sled::parse_range)))
     }
 
     fn stats(&self) -> Stats {
@@ -101,7 +103,7 @@ impl Storage for Sled {
 impl Sled {
     fn parse_range(item: Result<(IVec, IVec), sled::Error>) -> Option<KV> {
         let (x, y) = item.ok()?;
-        Some(KV { key: x.to_vec(), value: y.to_vec() }) //TODO this seems to copies to the entire vector
+        Some(KV { key: x.to_vec(), value: y.to_vec() }) //TODO this seems to copies the entire vector
     }
 
     fn get_tree(&self, maybe_keyspace: Option<String>) -> Result<Tree, Error> {

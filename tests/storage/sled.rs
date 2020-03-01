@@ -61,7 +61,8 @@ use crate::{do_insertions, test_items, test_items_sorted, check_iterators_equali
 
         log::info!("iterating");
         for (a,b) in items_sorted {
-            log::info!("test_data: {} {}", a, std::str::from_utf8(b.bytes()).unwrap())
+
+            log::info!("test_data: {} {}", a, std::str::from_utf8(b.as_ref()).unwrap())
         }
 
         std::fs::remove_dir_all(path).unwrap();

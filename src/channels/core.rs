@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::channels::append::Append;
+use crate::channels::grok::Grok_;
 use crate::channels::join::Join;
 use crate::channels::remove::Remove;
 use crate::channels::rename::Rename;
@@ -40,6 +41,7 @@ pub enum MutatorType {
     Trim,
     TrimSpace,
     Uppercase,
+    Grok,
 }
 
 impl FromStr for MutatorType {
@@ -58,6 +60,7 @@ impl FromStr for MutatorType {
             "trim" => Ok(MutatorType::Trim),
             "trim_space" => Ok(MutatorType::TrimSpace),
             "uppercase" => Ok(MutatorType::Uppercase),
+            "grok" => Ok(MutatorType::Grok),
             _ => Err(())
         }
     }
@@ -77,6 +80,7 @@ impl ToString for MutatorType {
             MutatorType::Trim => "trim".to_string(),
             MutatorType::TrimSpace => "trim_space".to_string(),
             MutatorType::Uppercase => "uppercase".to_string(),
+            MutatorType::Grok => "grok".to_string(),
         }
     }
 }
@@ -163,6 +167,16 @@ pub fn factory(v: Value) -> Option<Box<dyn Mutator>> {
                         field: v["field"].as_str()?.to_string(),
                     },
                     descending: v["descending"].as_bool()?.clone(),
+                })),
+        MutatorType::Grok =>
+            Some(Box::new(
+                Grok_ {
+                    modifier: Mutation {
+                        type_: type_.to_string(),
+                        field: v["field"].as_str()?.to_string(),
+                    },
+                    // custom_patterns: v["custom_patterns"].clone().as_array(),
+                    pattern: v["pattern"].as_str()?.to_string(),
                 })),
     }
 }
