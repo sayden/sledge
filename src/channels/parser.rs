@@ -35,17 +35,17 @@ impl Deref for Channel {
     }
 }
 
-pub fn parse_and_modify_str(json_data: &str, mods: &Channel) -> Result<String, Error> {
+pub fn parse_and_modify_str(json_data: &str, mods: &Channel) -> Result<Vec<u8>, Error> {
     let p: Value = serde_json::from_str(json_data).or_else(|err| Err(Error::Serialization(err)))?;
     parse_and_modify(p, mods)
 }
 
-pub fn parse_and_modify_u8(json_data: &[u8], mods: &Channel) -> Result<String, Error> {
+pub fn parse_and_modify_u8(json_data: &[u8], mods: &Channel) -> Result<Vec<u8>, Error> {
     let p: Value = serde_json::from_slice(json_data).or_else(|err| Err(Error::Serialization(err)))?;
     parse_and_modify(p, mods)
 }
 
-fn parse_and_modify(mut p: Value, mods: &Channel) -> Result<String, Error> {
+fn parse_and_modify(mut p: Value, mods: &Channel) -> Result<Vec<u8>, Error> {
     let mutp = p.as_object_mut()
         .ok_or(Error::SerializationString("error trying to create mutable reference to json".to_string()))?;
 
@@ -58,6 +58,6 @@ fn parse_and_modify(mut p: Value, mods: &Channel) -> Result<String, Error> {
         }
     }
 
-    serde_json::to_string(&mutp)
+    serde_json::to_vec(&mutp)
         .or_else(|err: serde_json::error::Error| Err(Error::Serialization(err)))
 }

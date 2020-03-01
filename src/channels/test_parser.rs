@@ -64,7 +64,7 @@ fn test_parser() {
         ]
     }"#;
 
-    let expected = r#"{"age":43,"my_field":"_value","name_hello":["john","doe","hello"],"phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#;
+    let expected = Vec::from(r#"{"age":43,"my_field":"_value","name_hello":["john","doe","hello"],"phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#);
 
     let channel = Channel::new(mutators_json_array).unwrap();
 
