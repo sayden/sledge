@@ -10,8 +10,6 @@ use crate::channels::core::Mutator;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Join {
-    #[serde(rename = "type")]
-    pub type_: String,
     pub field: Value,
     pub separator: String,
     pub new_field: String,
@@ -74,6 +72,10 @@ impl Mutator for Join {
             }
             _ => None
         }
+    }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Join
     }
 }
 

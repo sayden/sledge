@@ -64,6 +64,10 @@ impl Mutator for Sort {
 
         None
     }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Sort
+    }
 }
 
 impl fmt::Display for Sort {

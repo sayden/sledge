@@ -34,6 +34,10 @@ impl Mutator for Trim {
 
         None
     }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Trim
+    }
 }
 
 impl fmt::Display for Trim {

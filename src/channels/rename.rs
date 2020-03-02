@@ -26,6 +26,10 @@ impl Mutator for Rename {
 
         None
     }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Rename
+    }
 }
 
 impl fmt::Display for Rename {

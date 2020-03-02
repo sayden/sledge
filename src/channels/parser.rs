@@ -1,8 +1,11 @@
-use serde_json::Value;
-use crate::channels::core::{factory, Mutator};
-use std::ops::Deref;
 use std::borrow::BorrowMut;
-use serde::{Serialize, Deserialize};
+use std::ops::Deref;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::channels::core::{factory, Mutator, MutatorType};
+use crate::channels::grok::Grok_;
 use crate::components::storage::Error;
 
 pub struct Channel {
@@ -18,10 +21,16 @@ pub struct ChannelToParseJSON {
 
 impl Channel {
     pub fn new(mo: &str) -> Result<Self, Error> {
-        let ms: ChannelToParseJSON = serde_json::from_str(mo).or_else(|err| Err(Error::Serialization(err)))?;
+        let ms: ChannelToParseJSON = serde_json::from_str(mo)
+            .or_else(|err| Err(Error::Serialization(err)))?;
 
         let mutators = ms.channel.into_iter()
-            .filter_map(|x| factory(x))
+            .filter_map(|x| factory(x.clone())
+                .or_else(|| {
+                    log::error!("channel parsing error {}", x);
+                    None
+                })
+            )
             .collect::<Vec<Box<dyn Mutator>>>();
 
         Ok(Channel { name: "".to_string(), channel: mutators })
@@ -35,9 +44,31 @@ impl Deref for Channel {
     }
 }
 
-pub fn parse_and_modify_u8(json_data: &[u8], mods: &Channel) -> Result<Vec<u8>, Error> {
-    let p: Value = serde_json::from_slice(json_data).or_else(|err| Err(Error::Serialization(err)))?;
-    parse_and_modify(p, mods)
+pub fn parse_and_modify_u8(input_data: &[u8], mods: &Channel) -> Result<Vec<u8>, Error> {
+    if mods.len() == 0 {
+        return Err(Error::EmptyMutator);
+    }
+
+    let first_mod = mods.first().unwrap();
+    let maybe_value = match first_mod.mutator_type() {
+        MutatorType::Grok => {
+            let g = first_mod.as_grok().unwrap();
+            if g.modifier.field == "_plain_input" {
+                g.mutate_plain_string(input_data)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+
+
+    match maybe_value {
+        Some(x) => parse_and_modify(x, mods),
+        None => serde_json::from_slice(input_data)
+            .or_else(|err| Err(Error::Serialization(err)))
+            .and_then(|x| parse_and_modify(x, mods)),
+    }
 }
 
 fn parse_and_modify(mut p: Value, mods: &Channel) -> Result<Vec<u8>, Error> {

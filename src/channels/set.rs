@@ -18,6 +18,10 @@ impl Mutator for Set {
 
         None
     }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Set
+    }
 }
 
 impl fmt::Display for Set {

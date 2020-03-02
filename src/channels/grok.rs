@@ -11,35 +11,45 @@ use crate::channels::core::Mutator;
 #[derive(Debug)]
 pub struct Grok_ {
     pub modifier: Mutation,
-    // pub custom_patterns: Option<&'a Vec<Value>>, //TODO
-    pub pattern: String,
+    compiled_pattern: Pattern,
 }
 
-impl Mutator for Grok_ {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
-        let compiled = match self.compile() {
-            Ok(p) => p,
-            Err(err) => return Some(err),
-        };
+impl Grok_ {
+    pub fn new(field: String, pattern: String, custom: Option<&Vec<Value>>) -> Option<Self> {
+        let custom_patterns = custom
+            .and_then(|vec| Some(vec
+                .iter()
+                .filter_map(|v| match v {
+                    Value::String(ar) => Some(ar.clone()),
+                    _ => {
+                        error!("all custom values must be a string");
+                        None
+                    }
+                })
+                .filter_map(|raw_pattern| {
+                    let index = &raw_pattern.find(" ")?;
+                    let (a, b) = raw_pattern.split_at(*index);
+                    Some((a.to_string(), b.to_string()))
+                })
+                .collect::<Vec<(String, String)>>()));
 
 
-        let maybe_value = v.get(&self.modifier.field);
-        let value = match maybe_value {
-            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
-            Some(v) => v,
-        };
+        let compiled = Grok_::compile(pattern, custom_patterns).ok()?;
 
-        let incoming_value = match value {
-            Value::String(s) => s,
-            _ => return Some(anyhow!("grok uses a string value"))
-        };
+        Some(Grok_ {
+            modifier: Mutation {
+                field,
+            },
+            compiled_pattern: compiled,
+        })
+    }
 
-        //  Match the compiled pattern against a string
-        let matches = match compiled.match_against(incoming_value.as_str()) {
+    pub fn mutate_plain_string(&self, input_data: &[u8]) -> Option<Value> {
+        let input = std::str::from_utf8(input_data).ok()?; //TODO Don't ignore this error
+        let matches = match self.compiled_pattern.match_against(input) {
             Some(value) => value,
-            None => return Some(anyhow!("no matches")),
+            None => return None,
         };
-
 
         let mut values: Vec<(String, Value)> = Vec::new();
 
@@ -49,17 +59,23 @@ impl Mutator for Grok_ {
             values.push((k.to_string(), Value::from(val)))
         }
 
-        for (x,y) in values.into_iter(){
+        let mut v: Map<String, Value> = Map::new();
+
+        for (x, y) in values.into_iter() {
             v.insert(x, y);
         }
 
-        None
+        Some(serde_json::Value::Object(v))
     }
-}
 
-impl Grok_ {
-    fn compile(&self) -> Result<Pattern, anyhow::Error> {
+    fn compile(pattern: String, custom_patterns: Option<Vec<(String, String)>>) -> Result<Pattern, anyhow::Error> {
         let mut grok = Grok::default();
+
+        if custom_patterns.is_some() {
+            for (a, b) in custom_patterns.unwrap() {
+                grok.insert_definition(a, b)
+            }
+        }
 
         grok.insert_definition("USERNAME", r#"[a-zA-Z0-9._-]+"#);
         grok.insert_definition("USER", r#"%{USERNAME}"#);
@@ -132,7 +148,7 @@ impl Grok_ {
         grok.insert_definition("COMBINEDAPACHELOG", r#"%{COMMONAPACHELOG} %{QS:referrer} %{QS:agent}"#);
         grok.insert_definition("LOGLEVEL", r#"([Aa]lert|ALERT|[Tt]race|TRACE|[Dd]ebug|DEBUG|[Nn]otice|NOTICE|[Ii]nfo|INFO|[Ww]arn?(?:ing)?|WARN?(?:ING)?|[Ee]rr?(?:or)?|ERR?(?:OR)?|[Cc]rit?(?:ical)?|CRIT?(?:ICAL)?|[Ff]atal|FATAL|[Ss]evere|SEVERE|EMERG(?:ENCY)?|[Ee]merg(?:ency)?)"#);
 
-        let pattern = match grok.compile(self.pattern.as_str(), false) {
+        let pattern = match grok.compile(pattern.as_str(), false) {
             Ok(p) => p,
             Err(err) => return Err(anyhow!("error compiling grok '{}'", err.to_string())),
         };
@@ -141,8 +157,52 @@ impl Grok_ {
     }
 }
 
+impl Mutator for Grok_ {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+        let maybe_value = v.get(&self.modifier.field);
+        let value = match maybe_value {
+            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
+            Some(v) => v,
+        };
+
+        let incoming_value = match value {
+            Value::String(s) => s,
+            _ => return Some(anyhow!("grok uses a string value"))
+        };
+
+        let matches = match self.compiled_pattern.match_against(incoming_value.as_str()) {
+            Some(value) => value,
+            None => return Some(anyhow!("no matches")),
+        };
+
+        let mut values: Vec<(String, Value)> = Vec::new();
+
+        for (x, y) in matches.iter() {
+            let k = x.clone();
+            let val = y.clone();
+            if val.len() != 0 {
+                values.push((k.to_string(), Value::from(val)))
+            }
+        }
+
+        for (x, y) in values.into_iter() {
+            v.insert(x, y);
+        }
+
+        None
+    }
+
+    fn as_grok(&self) -> Option<&Grok_> {
+        Some(self)
+    }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Grok
+    }
+}
+
 impl fmt::Display for Grok_ {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "Grok on field: '{}', pattern '{}'", self.modifier.field, self.pattern)
+        write!(f, "Grok on field: '{}'", self.modifier.field)
     }
 }

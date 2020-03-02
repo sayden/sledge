@@ -126,15 +126,11 @@ pub async fn handle_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync
                         req: Bytes)
                         -> Result<impl Reply, Infallible>
 {
-    let id = match get_id(maybe_query.clone(), maybe_path_id, &req) {
-        None => return errors::new_write("no id found for your document", Some(keyspace)),
-        Some(s) => s,
-    };
 
     let v1_locked = db.lock().await;
     let mut v1 = v1_locked;
 
-    let maybe_channel = match get_channel(&v1, maybe_query.and_then(|x| x.channel)) {
+    let maybe_channel = match get_channel(&v1, maybe_query.clone().and_then(|x| x.channel)) {
         Ok(res) => res,
         Err(err) => return errors::new_write_string(err.to_string(), Some("_channel".to_string())),
     };
@@ -145,6 +141,12 @@ pub async fn handle_put(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync
             Err(err) => return errors::new_write(err.to_string().as_ref(), Some("_channel".to_string())),
         },
         None => req,
+    };
+
+    println!("{}", maybe_query.clone().unwrap());
+    let id = match get_id(maybe_query, maybe_path_id, &data) {
+        None => return errors::new_write("no id found for your document", Some(keyspace)),
+        Some(s) => s,
     };
 
     match v1.put(Some(keyspace.clone()), id.clone(), data) {
@@ -175,19 +177,25 @@ pub async fn handle_start(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sy
 
 fn get_id(maybe_query: Option<Query>,
           maybe_path_id: Option<String>,
-          req: &Bytes) -> Option<String> {
-    if (&maybe_query).is_some() && maybe_query.clone().unwrap().id.is_some() {
-        let j: Value = serde_json::from_slice(req.as_ref()).ok()?;
-        return Some(j[maybe_query?.id?].as_str()?.to_string());
+          req: &Bytes) -> Option<String>
+{
+    match maybe_query {
+        Some(q) => match q.id {
+            Some(id) => {
+                let j: Value = serde_json::from_slice(req.as_ref()).ok()?;
+                return Some(j[id].as_str()?.to_string())
+            },
+            _ => (),
+        }
+        _ => (),
     }
 
-    if maybe_path_id.is_some() {
-        match maybe_path_id.clone()?.as_str() {
-            "_auto" => Some(Uuid::new_v4().to_string()), // generate key
-            _ => maybe_path_id,
+    match maybe_path_id {
+        Some(path_id) => match path_id.as_str() {
+            "_auto" => Some(Uuid::new_v4().to_string()),
+            other => Some(path_id),
         }
-    } else {
-        return None; //No ?id= nor /db/{db}/{id} nor /db/{db}/auto so no way to know the ID of this
+        None => None,
     }
 }
 
@@ -210,23 +218,20 @@ fn get_channel(db: &tokio::sync::MutexGuard<'_, Box<dyn Storage + Send + Sync>>,
 
 #[test]
 fn test_get_key() {
-    let byt = Bytes::new();
+    let empty_input = Bytes::new();
     let s = r#"{"my_key":"my_value"}"#;
-    let bytes_with_content = Bytes::from(s);
-    assert_eq!(get_id(Some(Query {
-        id: Some("my_key".to_string()),
-        end: None,
-        limit: None,
-        until_key: None,
-        skip: None,
-        direction_forward: None
-        ,
-        channel: None,
-    }), None, &byt), None);
-    assert_eq!(get_id(Some(Query { id: Some("my_key".to_string()), end: None, limit: None, until_key: None, skip: None, direction_forward: None, channel: None }), Some("hello".to_string()),
-                      &bytes_with_content), Some("my_value".to_string()));
-    assert_eq!(get_id(None, Some("my_key2".to_string()), &byt), Some("my_key2".to_string()));
-    assert_eq!(get_id(None, Some("my_key2".to_string()), &byt), Some("my_key2".to_string()));
-    assert!(get_id(None, Some("_auto".to_string()), &byt).is_some());
-    assert_eq!(get_id(None, None, &byt), None);
+    let json = Bytes::from(s);
+
+
+    assert_eq!(get_id(Some(Query { id: Some("my_key".to_string()), end: None, limit: None, until_key: None,
+        skip: None, direction_forward: None, channel: None }), None, &empty_input), None);
+
+    assert_eq!(get_id(Some(Query { id: Some("my_key".to_string()), end: None, limit: None, until_key: None,
+        skip: None, direction_forward: None, channel: None }), Some("hello".to_string()),
+                      &json), Some("my_value".to_string()));
+
+    assert_eq!(get_id(None, Some("my_key2".to_string()), &empty_input), Some("my_key2".to_string()));
+    assert_eq!(get_id(None, Some("my_key2".to_string()), &empty_input), Some("my_key2".to_string()));
+    assert!(get_id(None, Some("_auto".to_string()), &empty_input).is_some());
+    assert_eq!(get_id(None, None, &empty_input), None);
 }

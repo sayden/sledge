@@ -41,6 +41,10 @@ impl Mutator for UpperLowercase {
 
         None
     }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Uppercase
+    }
 }
 
 impl fmt::Display for UpperLowercase {

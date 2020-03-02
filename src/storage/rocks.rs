@@ -139,7 +139,7 @@ impl Storage for Rocks {
                     IterMod::Skip(skip) => Box::new(Iterator::skip(acc, skip)),
                     IterMod::UntilKey(key) => Box::new(
                         Iterator::take_while(acc, move |x|
-                            x.0.to_vec() != key.as_bytes().to_vec())),
+                            x.0.to_vec() != key.as_bytes().to_vec())), //TODO maybe it can be replaced by using rocksdb::ReadOptions::set_iterate_upper_bound()
                 }
             });
 

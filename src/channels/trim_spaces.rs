@@ -29,6 +29,10 @@ impl Mutator for TrimSpaces {
 
         None
     }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::TrimSpace
+    }
 }
 
 impl fmt::Display for TrimSpaces {

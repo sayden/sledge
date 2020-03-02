@@ -90,6 +90,9 @@ pub enum Error {
     #[error("id not found in query")]
     WrongQuery,
 
+    #[error("mutator list in channel is empty")]
+    EmptyMutator,
+
 }
 
 pub fn put_error(cause: String) -> Result<(), Error> {

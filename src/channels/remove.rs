@@ -1,4 +1,4 @@
-use crate::channels::core::{Mutator, Mutation};
+use crate::channels::core::{Mutator, Mutation, MutatorType};
 use serde_json::{Map, Value};
 use std::fmt;
 use serde::export::Formatter;
@@ -15,6 +15,10 @@ impl Mutator for Remove {
             None => Some(anyhow!("value {} not found", self.modifier.field)),
             Some(_) => None
         }
+    }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Remove
     }
 }
 

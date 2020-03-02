@@ -37,6 +37,10 @@ impl Mutator for Split {
 
         None
     }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Split
+    }
 }
 
 impl fmt::Display for Split {

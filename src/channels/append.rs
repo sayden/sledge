@@ -25,6 +25,10 @@ impl Mutator for Append {
         v[&self.modifier.field] = Value::from(new_value);
         None
     }
+
+    fn mutator_type(&self) -> MutatorType {
+        MutatorType::Append
+    }
 }
 
 impl fmt::Display for Append {

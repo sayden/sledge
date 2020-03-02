@@ -87,8 +87,7 @@ pub fn insert_doc(db: Arc<tokio::sync::Mutex<Box<dyn Storage + Send + Sync>>>)
         .and(warp::body::bytes())
         .and_then(|keyspace, path_id: String, db, query, body| {
             handle_put(db, path_id.into(), Some(query), keyspace, body)
-        }
-        )
+        })
 }
 
 /**
