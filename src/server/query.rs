@@ -8,7 +8,7 @@ pub struct Query {
     pub limit: Option<usize>,
     pub until_key: Option<String>,
     pub skip: Option<usize>,
-    pub direction_forward: Option<bool>,
+    pub direction_reverse: Option<bool>,
     pub channel: Option<String>,
 }
 
@@ -20,7 +20,7 @@ impl Display for Query {
                self.limit.clone().unwrap_or_default(),
                self.until_key.clone().unwrap_or_default(),
                self.skip.clone().unwrap_or_default(),
-               self.direction_forward.clone().unwrap_or_default(),
+               self.direction_reverse.clone().unwrap_or_default(),
                self.channel.clone().unwrap_or_default())
     }
 }

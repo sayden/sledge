@@ -22,7 +22,7 @@ impl Grok_ {
                 .filter_map(|v| match v {
                     Value::String(ar) => Some(ar.clone()),
                     _ => {
-                        error!("all custom values must be a string");
+                        log::error!("all custom values must be a string");
                         None
                     }
                 })

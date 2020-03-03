@@ -1,6 +1,3 @@
-pub mod databases;
-pub mod filters;
-pub mod management;
-pub(crate) mod errors;
+pub mod errors;
 pub(crate) mod responses;
-pub(crate) mod requests;
+pub mod query;

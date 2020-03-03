@@ -78,7 +78,7 @@ fn parse_and_modify(mut p: Value, mods: &Channel) -> Result<Vec<u8>, Error> {
     for modifier in mods.iter() {
         match modifier.mutate(mutp.borrow_mut()) {
             Some(err) => {
-                warn!("error trying to modify json '{}'", err);
+                log::warn!("error trying to modify json '{}'", err);
             }
             _ => (),
         }
