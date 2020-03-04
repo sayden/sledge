@@ -26,6 +26,63 @@ lazy_static! {
     };
 }
 
+pub async fn range_with_channel(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &str, body: Body) -> Result<Response<Body>, Infallible> {
+    let whole_body = match hyper::body::to_bytes(body).await {
+        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.to_string()))),
+        Ok(body) => body,
+    };
+
+    let ch = match Channel::new_u8(whole_body.as_ref()){
+        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.to_string()))),
+        Ok(ch) => ch,
+    };
+
+    let maybe_id = get_id(&maybe_query, maybe_path_id, None);
+    let direction = get_range_direction(&maybe_query);
+
+    let id: String;
+    let mode = if maybe_id.is_some() {
+        id = maybe_id.unwrap();
+        IteratorMode::From(id.as_bytes(), direction)
+    } else {
+        match direction {
+            rocksdb::Direction::Forward => IteratorMode::Start,
+            rocksdb::Direction::Reverse => IteratorMode::End,
+        }
+    };
+
+    let _itermods = get_itermods(&maybe_query);
+
+    let cf = match DB.cf_handle(cf_name) {
+        Some(cf) => cf,
+        None => return Ok(new_read_error("cf not found", None, Some(cf_name.into()))),
+    };
+
+    let source_iter: DBIterator = match DB.iterator_cf(cf, mode) {
+        Ok(i) => i,
+        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.into())))
+    };
+
+    let db_iter = source_iter
+        .flat_map(move |tuple| parse_and_modify_u8(tuple.1.as_ref(), &ch).ok()
+            .and_then(|x| Some((tuple.0, x))))
+        .flat_map(|tuple| new_range_result(tuple.0.as_ref(), &tuple.1))
+        .map(|v| Ok(Bytes::from(v)));
+
+    let stream: Box<dyn Stream<Item=Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + Sync> =
+    box futures::stream::iter(db_iter);
+
+    let response = http::Response::builder()
+        .header(
+            "Content-Type",
+            "application/octet-stream",
+        )
+        .body(Body::from(stream))
+        .unwrap();
+
+    Ok(response)
+}
+
 pub fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &str) -> Result<Response<Body>, Infallible> {
     let maybe_id = get_id(&maybe_query, maybe_path_id, None);
     let direction = get_range_direction(&maybe_query);

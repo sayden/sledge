@@ -36,6 +36,30 @@ pub async fn put(cf: String, maybe_query: Option<Query>, maybe_path_id: Option<&
     }
 }
 
+pub async fn get_with_channel(maybe_query: Option<Query>, cf_name: String, id: String, body: Body) -> Result<Response<Body>, Infallible> {
+    let whole_body = match hyper::body::to_bytes(body).await {
+        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.to_string()))),
+        Ok(body) => body,
+    };
+
+    let ch = match Channel::new_u8(whole_body.as_ref()) {
+        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.to_string()))),
+        Ok(ch) => ch,
+    };
+
+    let value = match rocks::get(&cf_name, &id) {
+        Ok(res) => res,
+        Err(err) => return Ok(new_read_error(err, id.into(), cf_name.into()))
+    };
+
+    let data = match parse_and_modify_u8(&value, &ch) {
+        Ok(v) => Bytes::from(v),
+        Err(err) => return Ok(new_read_error(err, None, Some("_channel".to_string()))),
+    };
+
+    Ok(new_read_ok(data.as_ref(), id, cf_name))
+}
+
 pub fn get(maybe_query: Option<Query>, cf: String, id: String) -> Result<Response<Body>, Infallible> {
     let value = match rocks::get(&cf, &id) {
         Ok(res) => res,

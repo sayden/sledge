@@ -4,29 +4,17 @@ extern crate hyper;
 extern crate tokio;
 
 use std::convert::Infallible;
-
-
-
-
-
 use std::task::{Context, Poll};
-
-
 
 use futures_util::future;
 use http::{Method, Uri};
 use hyper::{Body, Request, Response, Server};
-
 use hyper::service::{make_service_fn, Service, service_fn};
-
-
 use serde_urlencoded;
 
-
-use sledge::components::{rocks};
-
-use sledge::server::query::Query;
+use sledge::components::rocks;
 use sledge::server::handlers;
+use sledge::server::query::Query;
 
 fn get_query(uri: &Uri) -> Option<Query> {
     serde_urlencoded::from_str::<Query>(uri.query()?).ok()
@@ -50,7 +38,6 @@ impl Service<Request<Body>> for Svc {
     }
 
     fn call(&mut self, _req: Request<Body>) -> Self::Future {
-
         let resp = http::Response::new(Body::from("ok"));
         future::ok(resp)
     }
@@ -74,7 +61,7 @@ impl<T> Service<T> for MakeSvc {
 
 async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let (parts, body) = req.into_parts();
-    let query = get_query(&parts.uri);
+    let maybe_query = get_query(&parts.uri);
     let path = get_path(parts.uri.path());
 
     match parts.method {
@@ -83,16 +70,14 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
                 Some(&"db") => match path.get(1) {
                     Some(&cf_name) => match path.get(2) {
                         Some(&id) => match id {
-                            "_all" => return rocks::range(query, None, cf_name),
-                            id => return match query {
-                                Some(q) => {
-                                    if q.limit.is_some() || q.skip.is_some() || q.direction_reverse.is_some() || q.until_key.is_some() {
-                                        rocks::range(Some(q), Some(id), cf_name)
-                                    } else {
-                                        handlers::get(Some(q), cf_name.to_string(), id.to_string())
-                                    }
-                                }
-                                None => handlers::get(None, cf_name.to_string(), id.to_string())
+                            "_all" => return rocks::range(maybe_query, None, cf_name),
+                            id => match maybe_query {
+                                Some(q) => return if q.limit.is_some() || q.skip.is_some() || q.direction_reverse.is_some() || q.until_key.is_some() {
+                                    rocks::range(Some(q), Some(id), cf_name)
+                                } else {
+                                    handlers::get(Some(q), cf_name.to_string(), id.to_string())
+                                },
+                                _ => return handlers::get(None, cf_name.to_string(), id.to_string())
                             }
                         },
                         None => println!("statistics about the cf"),
@@ -107,22 +92,44 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
                 Some(&"db") => match path.get(1) {
                     Some(&cf_name) => match path.get(2) {
                         Some(&id) => match id {
-                            id => return handlers::put(cf_name.to_string(), query, Some(id), body).await,
+                            id => return handlers::put(cf_name.to_string(), maybe_query, Some(id), body).await,
                         }
                         None => {
-                            return handlers::put(cf_name.to_string(), query, None, body).await
-                        },
+                            return handlers::put(cf_name.to_string(), maybe_query, None, body).await;
+                        }
                     }
                     _ => println!("you must specify a cf"),
                 }
                 _ => println!("root path not recognized")
             }
         }
+        Method::POST => {
+            match path.first() {
+                Some(&db) => match path.get(1) {
+                    Some(&cf_name) => match path.get(2) {
+                        Some(&id) => match id {
+                            "_all" => return rocks::range_with_channel(maybe_query, Some(id), cf_name, body).await,
+                            id => match maybe_query {
+                                Some(q) => return if q.limit.is_some() || q.skip.is_some() || q.direction_reverse.is_some() || q.until_key.is_some() {
+                                    rocks::range_with_channel(Some(q), Some(id), cf_name, body).await
+                                } else {
+                                    handlers::get_with_channel(Some(q), cf_name.to_string(), id.to_string(), body).await
+                                },
+                                _ => return handlers::get_with_channel(None, cf_name.to_string(), id.to_string(), body).await
+                            },
+                        }
+                        _ => println!("no id")
+                    }
+                    _ => println!("no cf")
+                }
+                _ => println!("path not recognized")
+            }
+        }
         _ => println!("method not recognized"),
     }
 
     let resp = http::Response::new(Body::from("ok"));
-    // future::ok(resp)
+// future::ok(resp)
     Ok(resp)
 }
 

@@ -33,6 +33,13 @@ impl Channel {
         Channel::new(ms)
     }
 
+    pub fn new_u8(mo: &[u8]) -> Result<Self, Error> {
+        let ms: ChannelToParseJSON = serde_json::from_slice(mo)
+            .or_else(|err| Err(Error::Serialization(err)))?;
+
+        Channel::new(ms)
+    }
+
     fn new(ms: ChannelToParseJSON) -> Result<Self, Error> {
         let mutators = ms.channel.into_iter()
             .filter_map(|x| factory(x.clone())
