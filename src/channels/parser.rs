@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::channels::core::{factory, Mutator, MutatorType};
-use crate::channels::grok::Grok_;
 use crate::components::storage::Error;
 
 pub struct Channel {
@@ -20,10 +19,21 @@ pub struct ChannelToParseJSON {
 }
 
 impl Channel {
-    pub fn new(mo: &str) -> Result<Self, Error> {
+    pub fn new_str(mo: &str) -> Result<Self, Error> {
         let ms: ChannelToParseJSON = serde_json::from_str(mo)
             .or_else(|err| Err(Error::Serialization(err)))?;
 
+        Channel::new(ms)
+    }
+
+    pub fn new_vec(mo: Vec<u8>) -> Result<Self, Error> {
+        let ms: ChannelToParseJSON = serde_json::from_slice(mo.as_slice())
+            .or_else(|err| Err(Error::Serialization(err)))?;
+
+        Channel::new(ms)
+    }
+
+    fn new(ms: ChannelToParseJSON) -> Result<Self, Error> {
         let mutators = ms.channel.into_iter()
             .filter_map(|x| factory(x.clone())
                 .or_else(|| {

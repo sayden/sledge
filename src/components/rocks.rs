@@ -1,48 +1,36 @@
+use std::convert::Infallible;
 use std::env;
 
 use bytes::Bytes;
-use rocksdb::{ColumnFamily, IteratorMode, Options};
+use futures::Stream;
+use http::Response;
+use hyper::Body;
+use rocksdb::{DBIterator, IteratorMode, Options};
+use serde_json::Value;
 use uuid::Uuid;
 
 use lazy_static::lazy_static;
-use serde_json::Value;
 
 use crate::channels::parser::{Channel, parse_and_modify_u8};
-use crate::components::kv::KV;
 use crate::components::storage::{create_keyspace_error, Error, IterMod, put_error};
+use crate::server::handlers::get_channel;
 use crate::server::query::Query;
-use futures::{Stream, future};
-use http::Response;
-use hyper::Body;
-use std::convert::Infallible;
+use crate::server::responses::{new_range_result, new_read_error};
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
         let maybe_path = env::var("FEEDB_PATH").unwrap();
-        let mut db = new_storage(maybe_path);
+        let db = new_storage(maybe_path);
 
         db
     };
 }
 
-
-
 pub fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &str) -> Result<Response<Body>, Infallible> {
-    let cf = match DB.cf_handle(cf_name) {
-        Some(cf) => cf,
-        None => return Ok(http::Response::builder()
-            .header(
-                "Content-Type",
-                "application/text",
-            )
-            .body(Body::from("no cf found!"))
-            .unwrap()),
-    };
-
     let maybe_id = get_id(&maybe_query, maybe_path_id, None);
     let direction = get_range_direction(&maybe_query);
 
-    let mut id: String;
+    let id: String;
     let mode = if maybe_id.is_some() {
         id = maybe_id.unwrap();
         IteratorMode::From(id.as_bytes(), direction)
@@ -53,22 +41,43 @@ pub fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &
         }
     };
 
-    let itermods = get_itermods(&maybe_query);
+    let _itermods = get_itermods(&maybe_query);
 
-    let db_iter = match DB.iterator_cf(cf, mode) {
+    let maybe_channel = match get_channel(&maybe_query) {
+        Ok(res) => res,
+        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.into()))),
+    };
+
+    let cf = match DB.cf_handle(cf_name) {
+        Some(cf) => cf,
+        None => return Ok(new_read_error("cf not found", None, Some(cf_name.into()))),
+    };
+
+    let source_iter: DBIterator = match DB.iterator_cf(cf, mode) {
         Ok(i) => i,
-        Err(err) => return Ok(http::Response::builder()
-            .header(
-                "Content-Type",
-                "application/text",
-            )
-            .body(Body::from(err.to_string()))
-            .unwrap())
-    }
-        .map(|tuple| tuple.1.to_vec())
-        .map(|v: Vec<u8>| Ok(Bytes::from(v)));
+        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.into())))
+    };
 
-    let stream: Box<dyn Stream<Item=Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + Sync> = box futures::stream::iter(db_iter);
+    let stream: Box<dyn Stream<Item=Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + Sync> =
+        match maybe_channel {
+            Some(ch) => {
+                let db_iter = source_iter
+                    .flat_map(move |tuple| parse_and_modify_u8(tuple.1.as_ref(), &ch).ok()
+                        .and_then(|x| Some((tuple.0, x))))
+                    .flat_map(|tuple| new_range_result(tuple.0.as_ref(), &tuple.1))
+                    .map(|v| Ok(Bytes::from(v)));
+
+                box futures::stream::iter(db_iter)
+            }
+            None => {
+                let db_iter = source_iter
+                    .flat_map(|tuple| new_range_result(tuple.0.as_ref(), tuple.1.as_ref()))
+                    .map(|v| Ok(Bytes::from(v)));
+
+                box futures::stream::iter(db_iter)
+            }
+        };
+
     let response = http::Response::builder()
         .header(
             "Content-Type",
@@ -77,9 +86,9 @@ pub fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &
         .body(Body::from(stream))
         .unwrap();
 
-    // return future::ok(response);
     Ok(response)
 }
+
 pub fn new_storage(path: String) -> rocksdb::DB {
     let mut opts = Options::default();
     opts.create_if_missing(true);
@@ -99,7 +108,7 @@ pub fn new_storage(path: String) -> rocksdb::DB {
 }
 
 
-pub fn get(keyspace: String, k: String) -> Result<String, Error> {
+pub fn get(keyspace: &String, k: &String) -> Result<Vec<u8>, Error> {
     let cf = DB.cf_handle(&keyspace);
 
     let res = match cf {
@@ -108,32 +117,15 @@ pub fn get(keyspace: String, k: String) -> Result<String, Error> {
     }.or_else(|err| Err(Error::Get(err.to_string())))?;
 
     match res {
-        Some(v) => match String::from_utf8(v) {
-            Ok(v) => Ok(v),
-            Err(e) => Err(Error::ParseFromUtf8(e)),
-        },
-        None => Err(Error::NotFound(k)),
+        Some(v) => Ok(v),
+        None => Err(Error::NotFound(k.clone())),
     }
 }
 
 
-pub(crate) fn put(cf_name: String, k: String, v: Bytes) -> Result<(), Error> {
-    let cf = DB.cf_handle(&cf_name).ok_or(Error::CannotRetrieveCF(cf_name))?;
+pub(crate) fn put(cf_name: &String, k: &String, v: Bytes) -> Result<(), Error> {
+    let cf = DB.cf_handle(&cf_name).ok_or(Error::CannotRetrieveCF(cf_name.clone()))?;
     DB.put_cf(cf, k, v).or_else(put_error_with_rocks_err)
-    // match (maybe_cf, self.create_cf_if_missing) {
-    //     (Some(cf), _) => DB.put_cf(cf, k, v).or_else(put_error_with_rocks_err),
-    //     (None, true) => {
-    //         DB.create_cf(cf_name.clone(), &rocksdb::Options::default())
-    //             .or_else(|err| keyspace_error_with_rocks_err(&cf_name.clone(), err))?;
-    //
-    //         let cf = DB.cf_handle(&cf_name)
-    //             .ok_or(Error::CannotCreateKeyspace(cf_name, "unknown error. Keyspace not created".into()))?;
-    //
-    //         DB.put_cf(cf, k, v)
-    //             .or_else(put_error_with_rocks_err)
-    //     }
-    //     (None, false) => put_error("cf not found and 'create if missing' is false".into()),
-    // }
 }
 
 
@@ -160,72 +152,6 @@ pub(crate) fn put(cf_name: String, k: String, v: Bytes) -> Result<(), Error> {
 //         x.push('\n' as u8);
 //         x
 //     }).collect::<Vec<u8>>()//TODO Avoid this collect? Body::from has this `impl From<Box<dyn Stream<Item = Result<Bytes, Box<dyn StdError + Send + Sync>>> + Send + Sync>>`
-// }
-
-// pub fn handle_put(maybe_path_id: Option<&str>,
-//                   maybe_query: Option<Query>,
-//                   keyspace: String,
-//                   req: Bytes)
-//                   -> Result<impl Reply, Infallible>
-// {
-//     let v1_locked = db.lock().await;
-//     let mut v1 = v1_locked;
-//
-//     let maybe_channel = match get_channel(&maybe_query).and_then(|x| x.channel) {
-//         Ok(res) => res,
-//         Err(err) => return errors::new_write_string(err.to_string(), Some("_channel".to_string())),
-//     };
-//
-//     let data = match maybe_channel {
-//         Some(c) => match parse_and_modify_u8(req.as_ref(), &c) {
-//             Ok(v) => Bytes::from(v),
-//             Err(err) => return errors::new_write(err.to_string().as_ref(), Some("_channel".to_string())),
-//         },
-//         None => req,
-//     };
-//
-//     let id = match get_id(&maybe_query, maybe_path_id, &data) {
-//         None => return errors::new_write("no id found for your document", Some(keyspace)),
-//         Some(s) => s,
-//     };
-//
-//     match v1.put(Some(keyspace.clone()), id.clone(), data) {
-//         Ok(_) => responses::new_write(Some(id), Some(keyspace)),
-//         Err(err) => errors::new_write(&err.to_string(), Some(keyspace)),
-//     }
-// }
-//
-// pub fn handle_get(keyspace: String, id: String, req: Option<Query>) -> future::Ready<Result<Response<Body>, hyper::Error>>
-// {
-//     let maybe_channel = match get_channel(&req) {
-//         Ok(res) => res,
-//         Err(err) => panic!(err),
-//     };
-//
-//     let value: String = match get(keyspace.clone(), id) {
-//         Ok(v) => v,
-//         Err(err) => panic!(err),
-//     };
-//
-//     let data = match maybe_channel {
-//         Some(c) => match parse_and_modify_u8(value.as_ref(), &c) {
-//             Ok(v) => Bytes::from(v),
-//             Err(err) => panic!(err),
-//         },
-//         None => Bytes::from(value),
-//     };
-//
-//     let maybe_value = serde_json::from_slice::<Value>(data.as_ref());
-//     match maybe_value {
-//         Ok(value) => future::ok(http::Response::builder()
-//             .header(
-//                 "Content-Type",
-//                 "application/json",
-//             )
-//             .body(Body::from(value))
-//             .unwrap()),
-//         Err(err) => panic!(err),
-//     }
 // }
 
 
@@ -289,7 +215,7 @@ pub fn get_id(maybe_query: &Option<Query>,
     match maybe_path_id {
         Some(path_id) => match path_id {
             "_auto" => Some(Uuid::new_v4().to_string()),
-            other => Some(path_id.to_string()),
+            _other => Some(path_id.to_string()),
         }
         None => None,
     }
