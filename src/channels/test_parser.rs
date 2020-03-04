@@ -80,7 +80,7 @@ fn test_parser() {
 
     let channel = Channel::new_str(mutators_json_array).unwrap();
 
-    let res = parse_and_modify_u8(data.as_bytes(), channel);
+    let res = parse_and_modify_u8(data.as_bytes(), &channel);
     let a = std::str::from_utf8(res.unwrap().as_ref()).unwrap().to_string();
     let b = std::str::from_utf8(expected.as_ref()).unwrap().to_string();
     assert_eq!(a, b)
@@ -116,7 +116,7 @@ fn test_parser_input_plain_text() {
 
     let channel = Channel::new_str(mutators_json_array).unwrap();
 
-    let res = parse_and_modify_u8(data.as_bytes(), channel);
+    let res = parse_and_modify_u8(data.as_bytes(), &channel);
     let a = std::str::from_utf8(res.unwrap().as_ref()).unwrap().to_string();
     let b = std::str::from_utf8(expected.as_ref()).unwrap().to_string();
     assert_eq!(a, b)

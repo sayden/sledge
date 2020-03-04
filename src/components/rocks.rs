@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 use std::env;
+use std::iter::{Filter, Take};
 
 use bytes::Bytes;
 use futures::Stream;
@@ -40,8 +41,6 @@ pub async fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_n
         }
     };
 
-    let _itermods = get_itermods(&maybe_query);
-
     let cf = match DB.cf_handle(cf_name) {
         Some(cf) => cf,
         None => return Ok(new_read_error("cf not found", None, Some(cf_name.into()))),
@@ -52,10 +51,25 @@ pub async fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_n
         Err(err) => return Ok(new_read_error(err, None, Some(cf_name.into())))
     };
 
+    let new_iter: Box<dyn Iterator<Item=(Box<[u8]>, Box<[u8]>)> + Send + Sync> = box source_iter;
+    let iter = match get_itermods(&maybe_query) {
+        Some(iterators) => {
+            iterators.into_iter().fold(new_iter, |acc, m| {
+                match m {
+                    IterMod::Limit(n) => box Iterator::take(acc, n),
+                    IterMod::Skip(n) => box Iterator::skip(acc, n),
+                    IterMod::UntilKey(id) => box Iterator::take_while(acc,move |x|x.0.to_vec() != Vec::from(id.clone())),       //TODO Fix this... please...
+                    _ => acc
+                }
+            })
+        }
+        _ => new_iter
+    };
+
     let stream: Box<dyn Stream<Item=Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + Sync> =
         match maybe_channel {
             Some(ch) => {
-                let db_iter = source_iter
+                let db_iter = iter
                     .flat_map(move |tuple| parse_and_modify_u8(tuple.1.as_ref(), &ch).ok()
                         .and_then(|x| Some((tuple.0, x))))
                     .flat_map(|tuple| new_range_result(tuple.0.as_ref(), &tuple.1))
@@ -64,7 +78,7 @@ pub async fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_n
                 box futures::stream::iter(db_iter)
             }
             None => {
-                let db_iter = source_iter
+                let db_iter = iter
                     .flat_map(|tuple| new_range_result(tuple.0.as_ref(), tuple.1.as_ref()))
                     .map(|v| Ok(Bytes::from(v)));
 

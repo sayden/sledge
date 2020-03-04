@@ -110,81 +110,42 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 }
 
 async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Infallible> {
-    match req.path.maybe_route {
-        Some(db) => match req.path.maybe_cf {
-            Some(cf_name) => match req.path.maybe_id {
-                Some(id) => {
-                    let maybe_post_channel = match get_channel_or_err(req.body, cf_name).await {
-                        Ok(ch) => Some(ch),
-                        Err(e) => return Ok(e),
-                    }.or(req.maybe_channel);
+    return match (req.path.maybe_route, req.path.maybe_cf, req.path.maybe_id) {
+        (Some("db"), Some(cf_name), Some(id)) => {
+            let maybe_post_channel = match get_channel_or_err(req.body, cf_name).await {
+                Ok(ch) => Some(ch),
+                Err(e) => return Ok(e),
+            }.or(req.maybe_channel);
 
-                    return match id {
-                        "_all" => rocks::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
-                        id => match req.maybe_query {
-                            Some(q) => if q.limit.is_some() || q.skip.is_some() || q.direction_reverse.is_some() || q.until_key.is_some() {
-                                rocks::range(Some(q), req.path.maybe_id, &cf_name, maybe_post_channel).await
-                            } else {
-                                handlers::get(Some(q), cf_name.to_string(), id.to_string(), maybe_post_channel)
-                            },
-                            _ => handlers::get(None, cf_name.to_string(), id.to_string(), maybe_post_channel)
-                        },
-                    };
-                }
-                _ => println!("no id")
+            match id {
+                "_all" => rocks::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
+                "_since" => rocks::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
+                id => handlers::get(req.maybe_query, cf_name.to_string(), id.to_string(), maybe_post_channel),
             }
-            _ => println!("no cf")
         }
-        _ => println!("path not recognized")
-    }
-
-    let resp = http::Response::new(Body::from("ok"));
-
-    Ok(resp)
+        _ => Ok(new_read_error("not enough info to process request", None, None)),
+    };
 }
 
 async fn method_put_handlers(req: PRequest<'_>) -> Result<Response<Body>, Infallible> {
-    match req.path.maybe_route {
-        Some(s) => match req.path.maybe_cf {
-            Some(cf_name) => return handlers::put(cf_name, req.maybe_query, req.path.maybe_id, req.body, req.maybe_channel).await,
-            _ => println!("you must specify a cf"),
-        }
-        _ => println!("root path not recognized")
-    }
-
-    let resp = http::Response::new(Body::from("ok"));
-
-    Ok(resp)
+    return match (req.path.maybe_route, req.path.maybe_cf) {
+        (Some("db"), Some(cf_name)) =>
+            handlers::put(cf_name, req.maybe_query, req.path.maybe_id, req.body, req.maybe_channel).await,
+        _ => Ok(new_read_error("not enough info to process request", None, None)),
+    };
 }
 
 async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Infallible> {
-    match req.path.maybe_route {
-        Some("db") => match req.path.maybe_cf {
-            Some(cf_name) => match req.path.maybe_id {
-                Some(id) => match id {
-                    "_all" => return rocks::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
-                    id => match req.maybe_query {
-                        Some(q) => return if q.limit.is_some()
-                            || q.skip.is_some()
-                            || q.direction_reverse.is_some()
-                            || q.until_key.is_some() {
-                            rocks::range(Some(q), Some(id), cf_name, req.maybe_channel).await
-                        } else {
-                            handlers::get(Some(q), cf_name.to_string(), id.to_string(), req.maybe_channel)
-                        },
-                        _ => return handlers::get(None, cf_name.to_string(), id.to_string(), req.maybe_channel)
-                    }
-                },
-                None => println!("statistics about the cf"),
-            },
-            None => println!("statistics about the db"),
-        },
-        _ => println!("welcome page"),
-    }
-
-    let resp = http::Response::new(Body::from("ok"));
-
-    Ok(resp)
+    return match (req.path.maybe_route, req.path.maybe_cf, req.path.maybe_id) {
+        (Some("db"), Some(cf_name), Some(id)) => {
+            match id {
+                "_all" => return rocks::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
+                "_since" => return rocks::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
+                id => handlers::get(req.maybe_query, cf_name.to_string(), id.to_string(), req.maybe_channel),
+            }
+        }
+        _ => Ok(new_read_error("not enough info to process request", None, None)),
+    };
 }
 
 async fn get_channel_or_err(body: Body, cf_name: &str) -> Result<Channel, Response<Body>> {
