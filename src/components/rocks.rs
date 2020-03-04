@@ -12,8 +12,7 @@ use uuid::Uuid;
 use lazy_static::lazy_static;
 
 use crate::channels::parser::{Channel, parse_and_modify_u8};
-use crate::components::storage::{create_keyspace_error, Error, IterMod, put_error};
-use crate::server::handlers::get_channel;
+use crate::components::storage::{Error, IterMod, put_error};
 use crate::server::query::Query;
 use crate::server::responses::{new_range_result, new_read_error};
 
@@ -26,17 +25,7 @@ lazy_static! {
     };
 }
 
-pub async fn range_with_channel(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &str, body: Body) -> Result<Response<Body>, Infallible> {
-    let whole_body = match hyper::body::to_bytes(body).await {
-        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.to_string()))),
-        Ok(body) => body,
-    };
-
-    let ch = match Channel::new_u8(whole_body.as_ref()){
-        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.to_string()))),
-        Ok(ch) => ch,
-    };
-
+pub async fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &str, maybe_channel: Option<Channel>) -> Result<Response<Body>, Infallible> {
     let maybe_id = get_id(&maybe_query, maybe_path_id, None);
     let direction = get_range_direction(&maybe_query);
 
@@ -52,58 +41,6 @@ pub async fn range_with_channel(maybe_query: Option<Query>, maybe_path_id: Optio
     };
 
     let _itermods = get_itermods(&maybe_query);
-
-    let cf = match DB.cf_handle(cf_name) {
-        Some(cf) => cf,
-        None => return Ok(new_read_error("cf not found", None, Some(cf_name.into()))),
-    };
-
-    let source_iter: DBIterator = match DB.iterator_cf(cf, mode) {
-        Ok(i) => i,
-        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.into())))
-    };
-
-    let db_iter = source_iter
-        .flat_map(move |tuple| parse_and_modify_u8(tuple.1.as_ref(), &ch).ok()
-            .and_then(|x| Some((tuple.0, x))))
-        .flat_map(|tuple| new_range_result(tuple.0.as_ref(), &tuple.1))
-        .map(|v| Ok(Bytes::from(v)));
-
-    let stream: Box<dyn Stream<Item=Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + Sync> =
-    box futures::stream::iter(db_iter);
-
-    let response = http::Response::builder()
-        .header(
-            "Content-Type",
-            "application/octet-stream",
-        )
-        .body(Body::from(stream))
-        .unwrap();
-
-    Ok(response)
-}
-
-pub fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &str) -> Result<Response<Body>, Infallible> {
-    let maybe_id = get_id(&maybe_query, maybe_path_id, None);
-    let direction = get_range_direction(&maybe_query);
-
-    let id: String;
-    let mode = if maybe_id.is_some() {
-        id = maybe_id.unwrap();
-        IteratorMode::From(id.as_bytes(), direction)
-    } else {
-        match direction {
-            rocksdb::Direction::Forward => IteratorMode::Start,
-            rocksdb::Direction::Reverse => IteratorMode::End,
-        }
-    };
-
-    let _itermods = get_itermods(&maybe_query);
-
-    let maybe_channel = match get_channel(&maybe_query) {
-        Ok(res) => res,
-        Err(err) => return Ok(new_read_error(err, None, Some(cf_name.into()))),
-    };
 
     let cf = match DB.cf_handle(cf_name) {
         Some(cf) => cf,
@@ -179,45 +116,13 @@ pub fn get(keyspace: &String, k: &String) -> Result<Vec<u8>, Error> {
     }
 }
 
-
-pub(crate) fn put(cf_name: &String, k: &String, v: Bytes) -> Result<(), Error> {
-    let cf = DB.cf_handle(&cf_name).ok_or(Error::CannotRetrieveCF(cf_name.clone()))?;
+pub(crate) fn put(cf_name: &str, k: &String, v: Bytes) -> Result<(), Error> {
+    let cf = DB.cf_handle(cf_name).ok_or(Error::CannotRetrieveCF(cf_name.to_string()))?;
     DB.put_cf(cf, k, v).or_else(put_error_with_rocks_err)
 }
 
-
-// pub fn process_kvs_with_ch(i: StorageIter, maybe_channel: Option<Channel>) -> Vec<u8> {
-//     let ch: Channel;
-//     let ch_name: String;
-//
-//     let channelized_iter = if maybe_channel.is_some() {
-//         ch = maybe_channel.unwrap();
-//         ch_name = ch.name.clone();
-//
-//         box i.map(|x| {
-//             parse_and_modify_u8(x.value.as_ref(), &ch)
-//                 .unwrap_or_else(|err| {
-//                     log::warn!("error trying to pass value through channel '{}': {}", ch_name, err.to_string());
-//                     x.value
-//                 })
-//         }) as VecIter
-//     } else {
-//         box i.map(|kv| kv.value) as VecIter
-//     };
-//
-//     channelized_iter.flat_map(move |mut x| {
-//         x.push('\n' as u8);
-//         x
-//     }).collect::<Vec<u8>>()//TODO Avoid this collect? Body::from has this `impl From<Box<dyn Stream<Item = Result<Bytes, Box<dyn StdError + Send + Sync>>> + Send + Sync>>`
-// }
-
-
 fn put_error_with_rocks_err(cause: rocksdb::Error) -> Result<(), Error> {
     put_error(cause.to_string())
-}
-
-fn keyspace_error_with_rocks_err(name: &str, cause: rocksdb::Error) -> Result<(), Error> {
-    create_keyspace_error(name.into(), cause.to_string())
 }
 
 fn get_itermods(maybe_query: &Option<Query>) -> Option<Vec<IterMod>> {

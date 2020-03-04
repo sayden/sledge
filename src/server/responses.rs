@@ -75,12 +75,12 @@ pub(crate) struct WriteReply<C: ToString, D: Serialize> {
     pub(crate)id: Option<String>,
 }
 
-pub fn new_write_ok(id: String, db: String) -> Response<Body> {
+pub fn new_write_ok(id: String, db: &str) -> Response<Body> {
     let body = serde_json::to_string(&WriteReply::<String, String> {
         result: ResultEmbeddedReply {
             error: false,
             cause: None,
-            db: Some(db),
+            db: Some(db.to_string()),
         },
         id: Some(id),
     }).unwrap();
