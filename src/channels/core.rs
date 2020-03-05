@@ -87,24 +87,19 @@ impl ToString for MutatorType {
 
 pub fn factory(v: Value) -> Option<Box<dyn Mutator>> {
     let type_: MutatorType = v["type"].as_str()?.parse().ok()?;
+    let field = v["field"].as_str()?.to_string();
 
     match type_ {
         MutatorType::Remove =>
             Some(Box::new(Remove {
-                modifier: Mutation {
-                    field: v["field"].as_str()?.to_string(),
-                }
+                modifier: Mutation { field }
             })),
         MutatorType::Append => Some(Box::new(Append {
-            modifier: Mutation {
-                field: v["field"].as_str()?.to_string()
-            },
+            modifier: Mutation { field },
             append: v["append"].as_str()?.to_string(),
         })),
         MutatorType::Rename => Some(Box::new(Rename {
-            modifier: Mutation {
-                field: v["field"].as_str()?.to_string()
-            },
+            modifier: Mutation { field },
             rename: v["new_name"].as_str()?.to_string(),
         })),
         MutatorType::Join => Some(Box::new(Join {
@@ -114,58 +109,44 @@ pub fn factory(v: Value) -> Option<Box<dyn Mutator>> {
         })),
         MutatorType::Lowercase => Some(Box::new(
             UpperLowercase {
-                modifier: Mutation {
-                    field: v["field"].as_str()?.to_string(),
-                },
+                modifier: Mutation { field },
                 f: str::to_lowercase,
             })),
         MutatorType::Uppercase => Some(Box::new(
             UpperLowercase {
-                modifier: Mutation {
-                    field: v["field"].as_str()?.to_string(),
-                },
+                modifier: Mutation { field },
                 f: str::to_uppercase,
             })),
         MutatorType::Split => Some(Box::new(
             Split {
-                modifier: Mutation {
-                    field: v["field"].as_str()?.to_string(),
-                },
+                modifier: Mutation { field },
                 separator: v["separator"].as_str()?.to_string(),
             })),
         MutatorType::TrimSpace => Some(Box::new(
             TrimSpaces {
-                modifier: Mutation {
-                    field: v["field"].as_str()?.to_string(),
-                },
+                modifier: Mutation { field },
             })),
         MutatorType::Trim => Some(Box::new(
             Trim {
-                modifier: Mutation {
-                    field: v["field"].as_str()?.to_string(),
-                },
+                modifier: Mutation { field },
                 from: v["from"].as_str()?.to_string(),
                 total: v["total"].as_i64()? as usize,
             })),
         MutatorType::Set =>
             Some(Box::new(
                 Set {
-                    modifier: Mutation {
-                        field: v["field"].as_str()?.to_string(),
-                    },
+                    modifier: Mutation { field },
                     value: v["value"].clone(),
                 })),
         MutatorType::Sort =>
             Some(Box::new(
                 Sort {
-                    modifier: Mutation {
-                        field: v["field"].as_str()?.to_string(),
-                    },
+                    modifier: Mutation { field },
                     descending: v["descending"].as_bool()?.clone(),
                 })),
         MutatorType::Grok =>
             Some(Box::new(Grok_::new(
-                v["field"].as_str()?.to_string(),
+                field,
                 v["pattern"].as_str()?.to_string(),
                 v["custom_patterns"].as_array())?)),
     }

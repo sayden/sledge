@@ -39,6 +39,9 @@ pub enum Error<'a> {
     #[error("cannot retrieve cf with name {0}")]
     CannotRetrieveCF(String),
 
+    #[error("column family '{0}' not found")]
+    CFNotFound(&'a str),
+
     #[error("keyspace with name {0} not found")]
     NotFound(&'a str),
 

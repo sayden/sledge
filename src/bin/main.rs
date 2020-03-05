@@ -17,7 +17,7 @@ use sledge::components::rocks;
 use sledge::components::storage::Error;
 use sledge::server::handlers;
 use sledge::server::query::Query;
-use sledge::server::responses::new_read_error;
+use sledge::server::responses::new_error;
 
 fn get_query(uri: &Uri) -> Option<Query> {
     serde_urlencoded::from_str::<Query>(uri.query()?).ok()
@@ -88,7 +88,7 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 
     let maybe_channel = match get_channel(&maybe_query) {
         Ok(res) => res,
-        Err(err) => return Ok(new_read_error(err, None, None)),
+        Err(err) => return Ok(new_error(err, None)),
     };
 
     let spath = SPath {
@@ -121,18 +121,20 @@ async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Infal
                 "_all" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
                 "_since" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
                 "_create" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
-                id => handlers::get(req.maybe_query, cf_name, id, maybe_post_channel),
+                id => handlers::get(req.maybe_query, cf_name, id, maybe_post_channel)
+                    .and_then(|res| Ok(res)).or_else(|err| Ok(err)),
             }
         }
-        _ => Ok(new_read_error("not enough info to process request", None, None)),
+        _ => Ok(new_error("not enough info to process request", None)),
     };
 }
 
 async fn method_put_handlers(req: PRequest<'_>) -> Result<Response<Body>, Infallible> {
     return match (req.path.maybe_route, req.path.maybe_cf) {
         (Some("db"), Some(cf_name)) =>
-            handlers::put(cf_name, req.maybe_query, req.path.maybe_id, req.body, req.maybe_channel).await,
-        _ => Ok(new_read_error("not enough info to process request", None, None)),
+            handlers::put(cf_name, req.maybe_query, req.path.maybe_id, req.body, req.maybe_channel).await
+                .and_then(|res| Ok(res)).or_else(|err| Ok(err)),
+        _ => Ok(new_error("not enough info to process request", None)),
     };
 }
 
@@ -142,21 +144,22 @@ async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Infa
             match id {
                 "_all" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
                 "_since" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
-                id => handlers::get(req.maybe_query, cf_name, id, req.maybe_channel),
+                id => handlers::get(req.maybe_query, cf_name, id, req.maybe_channel)
+                    .and_then(|res| Ok(res)).or_else(|err| Ok(err)),
             }
         }
-        _ => Ok(new_read_error("not enough info to process request", None, None)),
+        _ => Ok(new_error("not enough info to process request", None)),
     };
 }
 
 async fn get_channel_or_err(body: Body, cf_name: &str) -> Result<Channel, Response<Body>> {
     let whole_body = match hyper::body::to_bytes(body).await {
-        Err(err) => return Err(new_read_error(err, None, Some(cf_name))),
+        Err(err) => return Err(new_error(err, Some(cf_name))),
         Ok(body) => body,
     };
 
     Ok(match Channel::new_u8(whole_body.as_ref()) {
-        Err(err) => return Err(new_read_error(err, None, Some(cf_name))),
+        Err(err) => return Err(new_error(err, Some(cf_name))),
         Ok(ch) => ch,
     })
 }

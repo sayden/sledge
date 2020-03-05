@@ -1,8 +1,6 @@
 use std::env;
 
 use bytes::Bytes;
-use http::Response;
-use hyper::Body;
 use rocksdb::{DBIterator, IteratorMode, Options};
 
 use lazy_static::lazy_static;
@@ -10,7 +8,7 @@ use lazy_static::lazy_static;
 use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::storage::{Error, IterMod};
 use crate::server::query::Query;
-use crate::server::responses::{new_range_result, new_read_error};
+use crate::server::responses::new_range_result;
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
@@ -27,7 +25,7 @@ type RocksValue = (Box<[u8]>, Box<[u8]>);
 type RocksIter = Box<dyn Iterator<Item=RocksValue> + Send + Sync>;
 
 pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str, maybe_channel: Option<Channel>)
-             -> Result<ThreadByteIter, Response<Body>> {
+             -> Result<ThreadByteIter, Error> {
     let direction = get_range_direction(&maybe_query);
 
     let mode = match maybe_id {
@@ -38,15 +36,8 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
         }
     };
 
-    let cf = match DB.cf_handle(cf_name) {
-        Some(cf) => cf,
-        None => return Err(new_read_error("cf not found", None, Some(cf_name.into()))),
-    };
-
-    let source_iter: DBIterator = match DB.iterator_cf(cf, mode) {
-        Ok(i) => i,
-        Err(err) => return Err(new_read_error(err, None, Some(cf_name.into())))
-    };
+    let cf = DB.cf_handle(cf_name).ok_or(Error::CFNotFound(cf_name))?;
+    let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(|err| Error::Iterator(err.to_string()))?;
 
     let new_iter: RocksIter = box source_iter;
     let iter = match get_itermods(&maybe_query) {
@@ -78,6 +69,26 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
     Ok(thread_iter)
 }
 
+
+pub fn get<'a>(keyspace: &'a str, k: &'a str) -> Result<Vec<u8>, Error<'a>> {
+    let cf = DB.cf_handle(&keyspace);
+
+    let res = match cf {
+        Some(cf) => DB.get_cf(cf, k.clone()),
+        None => DB.get(k.clone()),
+    }.or_else(|err| Err(Error::Get(err.to_string())))?;
+
+    match res {
+        Some(v) => Ok(v),
+        None => Err(Error::NotFound(k)),
+    }
+}
+
+pub fn put<'a>(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error<'a>> {
+    let cf = DB.cf_handle(cf_name).ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
+    DB.put_cf(cf, k, v).or_else(|err| Err(Error::Put(err.to_string())))
+}
+
 pub fn new_storage(path: String) -> rocksdb::DB {
     let mut opts = Options::default();
     opts.create_if_missing(true);
@@ -96,45 +107,30 @@ pub fn new_storage(path: String) -> rocksdb::DB {
     }
 }
 
-
-pub fn get<'a>(keyspace: &'a str, k: &'a str) -> Result<Vec<u8>, Error<'a>> {
-    let cf = DB.cf_handle(&keyspace);
-
-    let res = match cf {
-        Some(cf) => DB.get_cf(cf, k.clone()),
-        None => DB.get(k.clone()),
-    }.or_else(|err| Err(Error::Get(err.to_string())))?;
-
-    match res {
-        Some(v) => Ok(v),
-        None => Err(Error::NotFound(k)),
-    }
-}
-
-pub(crate) fn put<'a>(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error<'a>> {
-    let cf = DB.cf_handle(cf_name).ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
-    DB.put_cf(cf, k, v).or_else(|err| Err(Error::Put(err.to_string())))
-}
-
 fn get_itermods(maybe_query: &Option<Query>) -> Option<Vec<IterMod>> {
-    if maybe_query.is_none() {
-        return None;
-    }
+    match maybe_query {
+        None => return None,
+        Some(query) => {
+            let mut itermods = Vec::new();
+            if let Some(skip) = query.skip {
+                itermods.push(IterMod::Skip(skip))
+            }
 
-    let query = maybe_query.clone().unwrap();
+            if let Some(limit) = query.limit {
+                itermods.push(IterMod::Limit(limit))
+            }
 
-    let mut itermods = Vec::new();
-    if query.skip.is_some() {
-        itermods.push(IterMod::Skip(query.skip.unwrap()))
-    }
-    if query.limit.is_some() {
-        itermods.push(IterMod::Limit(query.limit.unwrap()))
-    }
-    if query.until_key.is_some() {
-        itermods.push(IterMod::UntilKey(query.until_key.unwrap()))
-    }
+            if let Some(ref until_key) = query.until_key {
+                itermods.push(IterMod::UntilKey(until_key.clone()))
+            }
 
-    Some(itermods)
+            if itermods.len() == 0 {
+                return None;
+            }
+
+            Some(itermods)
+        }
+    }
 }
 
 fn get_range_direction(maybe_query: &Option<Query>) -> rocksdb::Direction {
