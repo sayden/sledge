@@ -26,7 +26,7 @@ impl Channel {
         Channel::new(ms)
     }
 
-    pub fn new_vec(mo: Vec<u8>) -> Result<Self, Error> {
+    pub fn new_vec(mo: Vec<u8>) -> Result<Self, Error<'a>> {
         let ms: ChannelToParseJSON = serde_json::from_slice(mo.as_slice())
             .or_else(|err| Err(Error::Serialization(err)))?;
 
@@ -40,7 +40,7 @@ impl Channel {
         Channel::new(ms)
     }
 
-    fn new(ms: ChannelToParseJSON) -> Result<Self, Error> {
+    fn new<'a>(ms: ChannelToParseJSON) -> Result<Self, Error<'a>> {
         let mutators = ms.channel.into_iter()
             .filter_map(|x| factory(x.clone())
                 .or_else(|| {
@@ -61,7 +61,7 @@ impl Deref for Channel {
     }
 }
 
-pub fn parse_and_modify_u8(input_data: &[u8], mods: &Channel) -> Result<Vec<u8>, Error> {
+pub fn parse_and_modify_u8<'a>(input_data: &[u8], mods: &'a Channel) -> Result<Vec<u8>, Error<'a>> {
     if mods.len() == 0 {
         return Err(Error::EmptyMutator);
     }

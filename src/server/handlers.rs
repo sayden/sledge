@@ -56,15 +56,15 @@ pub async fn put(cf: &str, maybe_query: Option<Query>, maybe_path_id: Option<&st
     let data = maybe_data.unwrap_or(whole_body);
 
     match rocks::put(cf, &id, data) {
-        Ok(()) => Ok(new_write_ok(id, cf)),
-        Err(err) => Ok(new_write_error(err, Some(id), cf)),
+        Ok(()) => Ok(new_write_ok(&id, cf)),
+        Err(err) => Ok(new_write_error(err, Some(&id), cf)),
     }
 }
 
-pub fn get(maybe_query: Option<Query>, cf: String, id: String, maybe_channel: Option<Channel>) -> Result<Response<Body>, Infallible> {
+pub fn get(maybe_query: Option<Query>, cf: &str, id: &str, maybe_channel: Option<Channel>) -> Result<Response<Body>, Infallible> {
     let value = match rocks::get(&cf, &id) {
         Ok(res) => res,
-        Err(err) => return Ok(new_read_error(err, id.into(), cf.into()))
+        Err(err) => return Ok(new_read_error(err, Some(&id), Some(&cf)))
     };
 
     let data = match pass_through_channel(maybe_query, value.as_ref(), maybe_channel) {
@@ -72,7 +72,7 @@ pub fn get(maybe_query: Option<Query>, cf: String, id: String, maybe_channel: Op
         Err(response) => return response,
     };
 
-    Ok(new_read_ok(data.unwrap_or(Bytes::from(value)).as_ref(), id, cf))
+    Ok(new_read_ok(data.unwrap_or_else(|| Bytes::from(value)).as_ref(), id, cf))
 }
 
 fn pass_through_channel(maybe_query: Option<Query>, whole_body: &[u8], maybe_channel: Option<Channel>) -> Result<Option<Bytes>, Result<Response<Body>, Infallible>> {
@@ -84,7 +84,7 @@ fn pass_through_channel(maybe_query: Option<Query>, whole_body: &[u8], maybe_cha
     match maybe_channel {
         Some(c) => match parse_and_modify_u8(whole_body, &c) {
             Ok(v) => Ok(Some(Bytes::from(v))),
-            Err(err) => return Err(Ok(new_write_error(err, None, "_channel"))),
+            Err(err) => Err(Ok(new_write_error(err, None, "_channel"))),
         },
         None => Ok(None),
     }
@@ -93,24 +93,27 @@ fn pass_through_channel(maybe_query: Option<Query>, whole_body: &[u8], maybe_cha
 pub fn get_id(maybe_query: &Option<Query>,
               maybe_path_id: Option<&str>,
               maybe_req: Option<&Bytes>) -> Option<String> {
-    match maybe_query {
-        Some(q) => match (q.id.as_ref(), maybe_req) {
-            (Some(id), Some(req)) => {
-                let j: Value = serde_json::from_slice(req.as_ref()).ok()?;
-                return Some(j[id].as_str()?.to_string());
-            }
-            _ => (),
+    if let Some(q) = maybe_query {
+        if let (Some(id), Some(req)) = (q.id_path.as_ref(), maybe_req){
+            let j: Value = serde_json::from_slice(req.as_ref()).ok()?;
+            let val: &Value = json_nested_value(id, &j);
+            return Some(val.as_str()?.to_string());
         }
-        _ => (),
     }
 
     match maybe_path_id {
         Some(path_id) => match path_id {
             "_auto" => Some(Uuid::new_v4().to_string()),
-            _other => Some(path_id.to_string()),
+            other => Some(path_id.to_string()),
         }
         None => None,
     }
+}
+
+fn json_nested_value<'a>(k: &str, v: &'a Value) -> &'a Value {
+    k.split('.').fold(v, move |acc, x| {
+        &acc[x]
+    })
 }
 
 pub fn get_channel(maybe_query: &Option<Query>) -> Result<Option<Channel>, Error>
@@ -118,12 +121,12 @@ pub fn get_channel(maybe_query: &Option<Query>) -> Result<Option<Channel>, Error
     match maybe_query {
         None => Ok(None),
         Some(query) => match &query.channel {
-            Some(channel_id) => {
-                let res = rocks::get(&"_channel".to_string(), &channel_id.clone())?;
-                let c = Channel::new_vec(res)?;
-                return Ok(Some(c));
-            }
             None => Ok(None),
+            Some(channel_id) => {
+                let res = rocks::get("_channel", &channel_id)?;
+                let c = Channel::new_vec(res)?;
+                Ok(Some(c))
+            }
         }
     }
 }
@@ -137,7 +140,7 @@ fn test_get_id() {
 
 
     assert_eq!(get_id(&Some(Query {
-        id: Some("my_key".to_string()),
+        id_path: Some("my_key".to_string()),
         end: None,
         limit: None,
         until_key: None,
@@ -147,7 +150,7 @@ fn test_get_id() {
     }), None, empty_input), None);
 
     assert_eq!(get_id(&Some(Query {
-        id: Some("my_key".to_string()),
+        id_path: Some("my_key".to_string()),
         end: None,
         limit: None,
         until_key: None,

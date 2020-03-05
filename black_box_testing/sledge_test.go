@@ -67,7 +67,7 @@ func TestPut(t *testing.T) {
 		})
 
 		t.Run("put doc with id in json", func(t *testing.T) {
-			byt := doReq(t, http.MethodPut, "http://localhost:3000/db/test_db?id=hello", `{"hello":"world"}`)
+			byt := doReq(t, http.MethodPut, "http://localhost:3000/db/test_db?id_path=hello", `{"hello":"world"}`)
 			assert.Equal(t, `{"result":{"error":false,"cause":null,"db":"test_db"},"id":"world"}`, string(byt))
 		})
 
@@ -93,7 +93,7 @@ func TestGet(t *testing.T) {
 		})
 
 		t.Run("try to get doc without id", func(t *testing.T) {
-			s := doReqNoBody(t, http.MethodGet, "http://localhost:3000/db/test_db?id="+known_id)
+			s := doReqNoBody(t, http.MethodGet, "http://localhost:3000/db/test_db?id_path="+known_id)
 			assert.Contains(t, s, `{"result":{"error":true`)
 		})
 

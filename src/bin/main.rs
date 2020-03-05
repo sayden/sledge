@@ -118,9 +118,10 @@ async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Infal
             }.or(req.maybe_channel);
 
             match id {
-                "_all" => handlers::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
-                "_since" => handlers::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
-                id => handlers::get(req.maybe_query, cf_name.to_string(), id.to_string(), maybe_post_channel),
+                "_all" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
+                "_since" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
+                "_create" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
+                id => handlers::get(req.maybe_query, cf_name, id, maybe_post_channel),
             }
         }
         _ => Ok(new_read_error("not enough info to process request", None, None)),
@@ -141,7 +142,7 @@ async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Infa
             match id {
                 "_all" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
                 "_since" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
-                id => handlers::get(req.maybe_query, cf_name.to_string(), id.to_string(), req.maybe_channel),
+                id => handlers::get(req.maybe_query, cf_name, id, req.maybe_channel),
             }
         }
         _ => Ok(new_read_error("not enough info to process request", None, None)),
@@ -150,12 +151,12 @@ async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Infa
 
 async fn get_channel_or_err(body: Body, cf_name: &str) -> Result<Channel, Response<Body>> {
     let whole_body = match hyper::body::to_bytes(body).await {
-        Err(err) => return Err(new_read_error(err, None, Some(cf_name.to_string()))),
+        Err(err) => return Err(new_read_error(err, None, Some(cf_name))),
         Ok(body) => body,
     };
 
     Ok(match Channel::new_u8(whole_body.as_ref()) {
-        Err(err) => return Err(new_read_error(err, None, Some(cf_name.to_string()))),
+        Err(err) => return Err(new_read_error(err, None, Some(cf_name))),
         Ok(ch) => ch,
     })
 }
@@ -166,7 +167,7 @@ fn get_channel(maybe_query: &Option<Query>) -> Result<Option<Channel>, Error>
         None => Ok(None),
         Some(query) => match &query.channel {
             Some(channel_id) => {
-                let res = rocks::get(&"_channel".to_string(), &channel_id.clone())?;
+                let res = rocks::get("_channel", &channel_id)?;
                 let c = Channel::new_vec(res)?;
                 return Ok(Some(c));
             }

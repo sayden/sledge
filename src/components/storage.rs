@@ -8,7 +8,7 @@ pub enum IterMod {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+pub enum Error<'a> {
     #[error("error doing get: {0}")]
     Get(String),
 
@@ -40,7 +40,7 @@ pub enum Error {
     CannotRetrieveCF(String),
 
     #[error("keyspace with name {0} not found")]
-    NotFound(String),
+    NotFound(&'a str),
 
     #[error("error serializing data: {0}")]
     Serialization(#[from] serde_json::Error),
@@ -59,6 +59,6 @@ pub enum Error {
 
 }
 
-pub fn create_keyspace_error(name: String, cause: String) -> Result<(), Error> {
+pub fn create_keyspace_error<'a>(name: String, cause: String) -> Result<(), Error<'a>> {
     Err(Error::CannotCreateKeyspace(name, cause))
 }

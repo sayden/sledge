@@ -22,7 +22,9 @@ lazy_static! {
 }
 
 pub type StreamItem = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
-pub type ThreadByteIter = Box<dyn Iterator<Item=StreamItem> + Send + Sync>;
+type ThreadByteIter = Box<dyn Iterator<Item=StreamItem> + Send + Sync>;
+type RocksValue = (Box<[u8]>, Box<[u8]>);
+type RocksIter = Box<dyn Iterator<Item=RocksValue> + Send + Sync>;
 
 pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str, maybe_channel: Option<Channel>)
              -> Result<ThreadByteIter, Response<Body>> {
@@ -46,14 +48,15 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
         Err(err) => return Err(new_read_error(err, None, Some(cf_name.into())))
     };
 
-    let new_iter: Box<dyn Iterator<Item=(Box<[u8]>, Box<[u8]>)> + Send + Sync> = box source_iter;
+    let new_iter: RocksIter = box source_iter;
     let iter = match get_itermods(&maybe_query) {
         Some(iterators) => {
             iterators.into_iter().fold(new_iter, |acc, m| {
                 match m {
                     IterMod::Limit(n) => box Iterator::take(acc, n),
                     IterMod::Skip(n) => box Iterator::skip(acc, n),
-                    IterMod::UntilKey(id) => box Iterator::take_while(acc, move |x| x.0.to_vec() != Vec::from(id.clone())),       //TODO Fix this... please...
+                    IterMod::UntilKey(id) => box Iterator::
+                    take_while(acc, move |x| x.0.to_vec() != Vec::from(id.clone())),       //TODO Fix this... please...
                 }
             })
         }
@@ -63,7 +66,7 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
     let thread_iter: ThreadByteIter = match maybe_channel {
         Some(ch) => box iter
             .flat_map(move |tuple| parse_and_modify_u8(tuple.1.as_ref(), &ch).ok()
-                .and_then(|x| Some((tuple.0, x))))
+                .map(|x| (tuple.0, x)))
             .flat_map(|tuple| new_range_result(tuple.0.as_ref(), &tuple.1))
             .map(|v| Ok(Bytes::from(v))),
 
@@ -94,7 +97,7 @@ pub fn new_storage(path: String) -> rocksdb::DB {
 }
 
 
-pub fn get(keyspace: &String, k: &String) -> Result<Vec<u8>, Error> {
+pub fn get<'a>(keyspace: &'a str, k: &'a str) -> Result<Vec<u8>, Error<'a>> {
     let cf = DB.cf_handle(&keyspace);
 
     let res = match cf {
@@ -104,12 +107,12 @@ pub fn get(keyspace: &String, k: &String) -> Result<Vec<u8>, Error> {
 
     match res {
         Some(v) => Ok(v),
-        None => Err(Error::NotFound(k.clone())),
+        None => Err(Error::NotFound(k)),
     }
 }
 
-pub(crate) fn put(cf_name: &str, k: &String, v: Bytes) -> Result<(), Error> {
-    let cf = DB.cf_handle(cf_name).ok_or(Error::CannotRetrieveCF(cf_name.to_string()))?;
+pub(crate) fn put<'a>(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error<'a>> {
+    let cf = DB.cf_handle(cf_name).ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
     DB.put_cf(cf, k, v).or_else(|err| Err(Error::Put(err.to_string())))
 }
 

@@ -35,13 +35,13 @@ pub(crate) struct ReadReply<C: ToString, Db: Serialize> {
     pub(crate)id: Option<C>,
 }
 
-pub fn new_read_ok(res: &[u8], id: String, db: String) -> Response<Body> {
+pub fn new_read_ok(res: &[u8], id: &str, db: &str) -> Response<Body> {
     let data: Box<Value> = box match serde_json::from_slice(res) {
         Ok(res) => res,
-        Err(err) => return new_read_error(err, id.into(), db.into()),
+        Err(err) => return new_read_error(err, Some(&id), Some(&db)),
     };
 
-    let body = serde_json::to_string(&ReadReply::<String, String> {
+    let body = serde_json::to_string(&ReadReply::<&str, &str> {
         result: ResultEmbeddedReply {
             error: false,
             cause: None,
@@ -54,11 +54,11 @@ pub fn new_read_ok(res: &[u8], id: String, db: String) -> Response<Body> {
     response_from_body(body)
 }
 
-pub fn new_read_error<C: ToString>(cause: C, id: Option<String>, db: Option<String>) -> Response<Body> {
-    let body = serde_json::to_string(&ReadReply::<String, String> {
+pub fn new_read_error<C: ToString>(cause: C, id: Option<&str>, db: Option<&str>) -> Response<Body> {
+    let body = serde_json::to_string(&ReadReply::<&str, &str> {
         result: ResultEmbeddedReply {
             error: true,
-            cause: Some(cause.to_string()),
+            cause: Some(&cause.to_string()),
             db,
         },
         data: None,
@@ -70,17 +70,17 @@ pub fn new_read_error<C: ToString>(cause: C, id: Option<String>, db: Option<Stri
 
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct WriteReply<C: ToString, D: Serialize> {
+pub(crate) struct WriteReply<'a, C: ToString, D: Serialize> {
     pub(crate)result: ResultEmbeddedReply<C, D>,
-    pub(crate)id: Option<String>,
+    pub(crate)id: Option<&'a str>,
 }
 
-pub fn new_write_ok(id: String, db: &str) -> Response<Body> {
-    let body = serde_json::to_string(&WriteReply::<String, String> {
+pub fn new_write_ok(id: &str, db: &str) -> Response<Body> {
+    let body = serde_json::to_string(&WriteReply::<&str, &str> {
         result: ResultEmbeddedReply {
             error: false,
             cause: None,
-            db: Some(db.to_string()),
+            db: Some(db),
         },
         id: Some(id),
     }).unwrap();
@@ -88,7 +88,7 @@ pub fn new_write_ok(id: String, db: &str) -> Response<Body> {
     response_from_body(body)
 }
 
-pub fn new_write_error<C: ToString, D: Serialize>(cause: C, id: Option<String>, db: D) -> Response<Body> {
+pub fn new_write_error<C: ToString, D: Serialize>(cause: C, id: Option<&str>, db: D) -> Response<Body> {
     let body = serde_json::to_string(&WriteReply {
         result: ResultEmbeddedReply {
             error: true,
