@@ -59,10 +59,6 @@ pub enum Error {
 
 }
 
-pub fn put_error(cause: String) -> Result<(), Error> {
-    Err(Error::Put(cause))
-}
-
 pub fn create_keyspace_error(name: String, cause: String) -> Result<(), Error> {
     Err(Error::CannotCreateKeyspace(name, cause))
 }

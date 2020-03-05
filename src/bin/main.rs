@@ -118,8 +118,8 @@ async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Infal
             }.or(req.maybe_channel);
 
             match id {
-                "_all" => rocks::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
-                "_since" => rocks::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
+                "_all" => handlers::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
+                "_since" => handlers::range(req.maybe_query, Some(id), cf_name, maybe_post_channel).await,
                 id => handlers::get(req.maybe_query, cf_name.to_string(), id.to_string(), maybe_post_channel),
             }
         }
@@ -139,8 +139,8 @@ async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Infa
     return match (req.path.maybe_route, req.path.maybe_cf, req.path.maybe_id) {
         (Some("db"), Some(cf_name), Some(id)) => {
             match id {
-                "_all" => return rocks::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
-                "_since" => return rocks::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
+                "_all" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
+                "_since" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
                 id => handlers::get(req.maybe_query, cf_name.to_string(), id.to_string(), req.maybe_channel),
             }
         }
