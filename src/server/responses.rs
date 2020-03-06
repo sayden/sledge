@@ -11,10 +11,17 @@ pub struct RangeResult {
     data: Box<Value>,
 }
 
-pub fn new_range_result_string(id: &[u8], data: &[u8]) -> Option<String> {
-    serde_json::to_string(&new_range_result(id, data)?)
+pub fn range_result_to_string(rr: &RangeResult) -> Option<String> {
+    serde_json::to_string(rr)
         .map_err(|err| log::warn!("error parsing range result {}", err.to_string()))
         .ok()
+}
+
+pub fn new_range_result_string(id: &[u8], data: &[u8]) -> Option<String> {
+    range_result_to_string(&new_range_result(id, data)?)
+    // serde_json::to_string(&new_range_result(id, data)?)
+    //     .map_err(|err| log::warn!("error parsing range result {}", err.to_string()))
+    //     .ok()
 }
 
 pub fn new_range_result(id: &[u8], data: &[u8]) -> Option<RangeResult> {

@@ -6,18 +6,24 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::channels::parser::{Channel, parse_and_modify_u8};
-use crate::components::rocks;
-use crate::components::rocks::StreamItem;
 use crate::components::errors::Error;
+use crate::components::rocks;
 use crate::server::query::Query;
-use crate::server::responses::{new_read_ok, ResultEmbeddedReply, WriteReply};
+use crate::server::responses::{new_read_ok, range_result_to_string, ResultEmbeddedReply, WriteReply};
+
+type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
+type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
+type BytesResultIterator = Box<dyn Iterator<Item=BytesResult> + Send + Sync>;
 
 pub async fn range(maybe_query: Option<Query>, maybe_path_id: Option<&str>, cf_name: &str, maybe_channel: Option<Channel>) -> Result<Response<Body>, Error> {
     let maybe_id = get_id(&maybe_query, maybe_path_id, None);
 
-    let thread_iter = rocks::range(maybe_query, maybe_id, cf_name, maybe_channel)?;
+    let thread_iter: BytesResultIterator = box rocks::range(maybe_query, maybe_id, cf_name, maybe_channel)?
+        .map(|rr| range_result_to_string(&rr))
+        .flat_map(|s| s.map(|s| Ok(Bytes::from(s))));
 
-    let stream: Box<dyn Stream<Item=StreamItem> + Send + Sync> = box futures::stream::iter(thread_iter);
+
+    let stream: BytesResultStream = box futures::stream::iter(thread_iter);
 
     http::Response::builder()
         .header(
@@ -59,9 +65,9 @@ pub fn get<'a>(cf: &'a str, id: &'a str, maybe_channel: &'a Option<Channel>) -> 
 }
 
 fn get_id(maybe_query: &Option<Query>,
-              maybe_path_id: Option<&str>,
-              maybe_req: Option<&Bytes>)
-              -> Option<String>
+          maybe_path_id: Option<&str>,
+          maybe_req: Option<&Bytes>)
+          -> Option<String>
 {
     if let Some(q) = maybe_query {
         if let (Some(id), Some(req)) = (q.id_path.as_ref(), maybe_req) {

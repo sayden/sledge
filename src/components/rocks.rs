@@ -8,7 +8,7 @@ use lazy_static::lazy_static;
 use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::errors::Error;
 use crate::server::query::Query;
-use crate::server::responses::new_range_result_string;
+use crate::server::responses::{RangeResult, new_range_result};
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
@@ -25,13 +25,12 @@ pub enum IterMod {
     UntilKey(String),
 }
 
-pub type StreamItem = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
-type ThreadByteIter = Box<dyn Iterator<Item=StreamItem> + Send + Sync>;
+type RangeResultIterator = Box<dyn Iterator<Item=RangeResult> + Send + Sync>;
 type RocksValue = (Box<[u8]>, Box<[u8]>);
 type RocksIter = Box<dyn Iterator<Item=RocksValue> + Send + Sync>;
 
 pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str, maybe_channel: Option<Channel>)
-             -> Result<ThreadByteIter, Error> {
+             -> Result<RangeResultIterator, Error> {
     let direction = get_range_direction(&maybe_query);
 
     let mode = match maybe_id {
@@ -60,16 +59,14 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
         }
     };
 
-    let thread_iter: ThreadByteIter = match maybe_channel {
+    let thread_iter: RangeResultIterator = match maybe_channel {
         Some(ch) => box iter
             .flat_map(move |tuple| parse_and_modify_u8(tuple.1.as_ref(), &ch).ok()
                 .map(|x| (tuple.0, x)))
-            .flat_map(|tuple| new_range_result_string(tuple.0.as_ref(), &tuple.1))
-            .map(|v| Ok(Bytes::from(v))),
+            .flat_map(|tuple| new_range_result(tuple.0.as_ref(), &tuple.1)),
 
         None => box iter
-            .flat_map(|tuple| new_range_result_string(tuple.0.as_ref(), tuple.1.as_ref()))
-            .map(|v| Ok(Bytes::from(v))),
+            .flat_map(|tuple| new_range_result(tuple.0.as_ref(), tuple.1.as_ref())),
     };
 
     Ok(thread_iter)
