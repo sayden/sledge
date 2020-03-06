@@ -7,8 +7,8 @@ use crate::components::errors::Error;
 
 #[derive(Serialize, Deserialize)]
 pub struct RangeResult {
-    id: String,
-    data: Box<Value>,
+    pub id: String,
+    pub data: Box<Value>,
 }
 
 pub fn range_result_to_string(rr: &RangeResult) -> Option<String> {
@@ -19,9 +19,6 @@ pub fn range_result_to_string(rr: &RangeResult) -> Option<String> {
 
 pub fn new_range_result_string(id: &[u8], data: &[u8]) -> Option<String> {
     range_result_to_string(&new_range_result(id, data)?)
-    // serde_json::to_string(&new_range_result(id, data)?)
-    //     .map_err(|err| log::warn!("error parsing range result {}", err.to_string()))
-    //     .ok()
 }
 
 pub fn new_range_result(id: &[u8], data: &[u8]) -> Option<RangeResult> {

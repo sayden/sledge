@@ -8,7 +8,7 @@ use lazy_static::lazy_static;
 use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::errors::Error;
 use crate::server::query::Query;
-use crate::server::responses::{RangeResult, new_range_result};
+use crate::server::responses::{new_range_result, RangeResult};
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
@@ -29,11 +29,11 @@ type RangeResultIterator = Box<dyn Iterator<Item=RangeResult> + Send + Sync>;
 type RocksValue = (Box<[u8]>, Box<[u8]>);
 type RocksIter = Box<dyn Iterator<Item=RocksValue> + Send + Sync>;
 
-pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str, maybe_channel: Option<Channel>)
+pub fn range(query: Option<Query>, id: Option<String>, cf_name: &str, channel: Option<Channel>)
              -> Result<RangeResultIterator, Error> {
-    let direction = get_range_direction(&maybe_query);
+    let direction = get_range_direction(&query);
 
-    let mode = match maybe_id {
+    let mode = match id {
         Some(ref id) => IteratorMode::From(id.as_bytes(), direction),
         None => match direction {
             rocksdb::Direction::Forward => IteratorMode::Start,
@@ -45,7 +45,7 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
     let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
     let new_iter: RocksIter = box source_iter;
-    let iter = match get_itermods(&maybe_query) {
+    let iter = match get_itermods(&query) {
         None => new_iter,
         Some(iterators) => {
             iterators.into_iter().fold(new_iter, |acc, m| {
@@ -59,7 +59,7 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
         }
     };
 
-    let thread_iter: RangeResultIterator = match maybe_channel {
+    let thread_iter: RangeResultIterator = match channel {
         Some(ch) => box iter
             .flat_map(move |tuple| parse_and_modify_u8(tuple.1.as_ref(), &ch).ok()
                 .map(|x| (tuple.0, x)))
@@ -101,8 +101,8 @@ pub fn new_storage(path: String) -> rocksdb::DB {
     }
 }
 
-fn get_itermods(maybe_query: &Option<Query>) -> Option<Vec<IterMod>> {
-    match maybe_query {
+fn get_itermods(query: &Option<Query>) -> Option<Vec<IterMod>> {
+    match query {
         None => return None,
         Some(query) => {
             let mut itermods = Vec::new();
@@ -127,15 +127,14 @@ fn get_itermods(maybe_query: &Option<Query>) -> Option<Vec<IterMod>> {
     }
 }
 
-fn get_range_direction(maybe_query: &Option<Query>) -> rocksdb::Direction {
-    match &maybe_query {
-        Some(query) => match query.direction_reverse {
-            Some(is_reverse) => match is_reverse {
-                true => rocksdb::Direction::Reverse,
-                false => rocksdb::Direction::Forward,
-            },
-            _ => rocksdb::Direction::Forward,
+fn get_range_direction(query: &Option<Query>) -> rocksdb::Direction {
+    if let Some(q) = query {
+        if let Some(is_reverse) = q.direction_reverse {
+            if is_reverse {
+                return rocksdb::Direction::Reverse;
+            };
         }
-        _ => rocksdb::Direction::Forward
-    }
+    };
+
+    rocksdb::Direction::Forward
 }

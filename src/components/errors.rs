@@ -10,6 +10,12 @@ pub enum Error {
     #[error("error parsing HTTP body: {0}")]
     BodyParsingError(#[from]hyper::Error),
 
+    #[error("an ID is required")]
+    MissingID,
+
+    #[error("a query is required")]
+    MissingQuery,
+
     #[error("rocksdb error: {0}")]
     RocksDB(#[from] rocksdb::Error),
 

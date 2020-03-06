@@ -13,8 +13,8 @@ use hyper::service::{make_service_fn, Service, service_fn};
 use serde_urlencoded;
 
 use sledge::channels::parser::Channel;
-use sledge::components::rocks;
 use sledge::components::errors::Error;
+use sledge::components::rocks;
 use sledge::server::handlers;
 use sledge::server::query::Query;
 
@@ -46,21 +46,23 @@ impl Service<Request<Body>> for Svc {
 }
 
 struct SPath<'a> {
-    maybe_route: Option<&'a str>,
-    maybe_cf: Option<&'a str>,
-    maybe_id: Option<&'a str>,
+    route: Option<&'a str>,
+    cf: Option<&'a str>,
+    id: Option<&'a str>,
+    action: Option<&'a str>,
+    p1: Option<&'a str>,
 }
 
 struct GetRequest<'a> {
     path: SPath<'a>,
-    maybe_channel: Option<Channel>,
-    maybe_query: Option<Query>,
+    channel: Option<Channel>,
+    query: Option<Query>,
 }
 
 struct PRequest<'a> {
     path: SPath<'a>,
-    maybe_channel: Option<Channel>,
-    maybe_query: Option<Query>,
+    channel: Option<Channel>,
+    query: Option<Query>,
     body: Body,
 }
 
@@ -82,24 +84,26 @@ impl<T> Service<T> for MakeSvc {
 
 async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let (parts, body) = req.into_parts();
-    let maybe_query = get_query(&parts.uri);
+    let query = get_query(&parts.uri);
     let path = get_path(parts.uri.path());
 
-    let maybe_channel = match get_channel(&maybe_query) {
+    let channel = match get_channel(&query) {
         Ok(res) => res,
         Err(err) => return Ok(err.into()),
     };
 
-    let spath = SPath {
-        maybe_route: path.get(0).cloned(),
-        maybe_cf: path.get(1).cloned(),
-        maybe_id: path.get(2).cloned(),
+    let path = SPath {
+        route: path.get(0).cloned(),
+        cf: path.get(1).cloned(),
+        id: path.get(2).cloned(),
+        action: path.get(3).cloned(),
+        p1: path.get(4).cloned(),
     };
 
     let res = match parts.method {
-        Method::GET => method_get_handlers(GetRequest { path: spath, maybe_channel, maybe_query }).await,
-        Method::PUT => method_put_handlers(PRequest { path: spath, maybe_query, maybe_channel, body }).await,
-        Method::POST => method_post_handlers(PRequest { path: spath, maybe_query, maybe_channel, body }).await,
+        Method::GET => method_get_handlers(GetRequest { path, channel, query }).await,
+        Method::PUT => method_put_handlers(PRequest { path, query, channel, body }).await,
+        Method::POST => method_post_handlers(PRequest { path, query, channel, body }).await,
         _ => Err(Error::MethodNotFound),
     };
 
@@ -110,17 +114,17 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 }
 
 async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Error> {
-    return match (req.path.maybe_route, req.path.maybe_cf, req.path.maybe_id) {
+    return match (req.path.route, req.path.cf, req.path.id) {
         (Some("db"), Some(cf_name), Some(id)) => {
             let maybe_post_channel = match get_channel_or_err(req.body).await {
                 Ok(ch) => Some(ch),
                 Err(e) => return Ok(From::from(e)),
-            }.or(req.maybe_channel);
+            }.or(req.channel);
 
             match id {
-                "_all" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
-                "_since" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
-                "_create" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
+                "_all" => handlers::range(req.query, None, cf_name, maybe_post_channel).await,
+                "_since" => handlers::range(req.query, None, cf_name, maybe_post_channel).await,
+                "_create_secondary_index" => handlers::create(req.query, cf_name).await,
                 id => handlers::get(cf_name, id, &maybe_post_channel)
                     .and_then(|res| Ok(res)).or_else(|err| Ok(err.into())),
             }
@@ -130,21 +134,22 @@ async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Error
 }
 
 async fn method_put_handlers(req: PRequest<'_>) -> Result<Response<Body>, Error> {
-    return match (req.path.maybe_route, req.path.maybe_cf) {
+    return match (req.path.route, req.path.cf) {
         (Some("db"), Some(cf_name)) =>
-            handlers::put(cf_name, &req.maybe_query, req.path.maybe_id, req.body, &req.maybe_channel).await
+            handlers::put(cf_name, &req.query, req.path.id, req.body, &req.channel).await
                 .and_then(|res| Ok(res)).or_else(|err| Ok(err.into())),
         _ => Err(Error::WrongQuery),
     };
 }
 
 async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Error> {
-    return match (req.path.maybe_route, req.path.maybe_cf, req.path.maybe_id) {
+    return match (req.path.route, req.path.cf, req.path.id) {
         (Some("db"), Some(cf_name), Some(id)) => {
             match id {
-                "_all" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
-                "_since" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
-                id => handlers::get(cf_name, id, &req.maybe_channel)
+                "_all" => return handlers::range(req.query, None, cf_name, req.channel).await,
+                "_since" => return handlers::range(req.query, None, cf_name, req.channel).await,
+                "_create" => return handlers::create(req.query, None, cf_name, req.channel).await,
+                id => handlers::get(cf_name, id, &req.channel)
                     .and_then(|res| Ok(res)).or_else(|err| Ok(err.into())),
             }
         }
