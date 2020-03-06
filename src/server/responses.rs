@@ -77,14 +77,14 @@ pub(crate) struct ErrorReply<C: ToString> {
     pub(crate)result: ResultEmbeddedReply<C>,
 }
 
-pub fn new_read_ok<'a>(res: &[u8], id: &str) -> Result<Response<Body>, Error> {
+pub fn new_read_ok<'a>(res: &[u8], id: Option<&str>) -> Result<Response<Body>, Error> {
     let data: Box<Value> = box serde_json::from_slice(res)
         .map_err(Error::SerdeError)?;
 
     let reply = ReadReply::<&str> {
         result: ResultEmbeddedReply::ok(),
         data: Some(data),
-        id: Some(id),
+        id,
     };
 
     Ok(reply.into())

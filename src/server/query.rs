@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Query {
-    pub id_path: Option<String>,
+    pub field_path: Option<String>,
     pub end: Option<String>,
     pub limit: Option<usize>,
     pub until_key: Option<String>,
@@ -15,7 +15,7 @@ pub struct Query {
 impl Display for Query {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "id: {}\nend: {}\nlimit: {}\nuntil_key: {}\nskip: {}\ndirection_forward: {}\nchannel: {}\n",
-               self.id_path.clone().unwrap_or_default(),
+               self.field_path.clone().unwrap_or_default(),
                self.end.clone().unwrap_or_default(),
                self.limit.clone().unwrap_or_default(),
                self.until_key.clone().unwrap_or_default(),
