@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::channels::core::{factory, Mutator, MutatorType};
-use crate::components::storage::Error;
+use crate::components::errors::Error;
 
 pub struct Channel {
     pub name: String,
@@ -21,26 +21,26 @@ pub struct ChannelToParseJSON {
 impl Channel {
     pub fn new_str(mo: &str) -> Result<Self, Error> {
         let ms: ChannelToParseJSON = serde_json::from_str(mo)
-            .or_else(|err| Err(Error::Serialization(err)))?;
+            .or_else(|err| Err(Error::SerdeError(err)))?;
 
         Channel::new(ms)
     }
 
-    pub fn new_vec(mo: Vec<u8>) -> Result<Self, Error<'a>> {
+    pub fn new_vec(mo: Vec<u8>) -> Result<Self, Error> {
         let ms: ChannelToParseJSON = serde_json::from_slice(mo.as_slice())
-            .or_else(|err| Err(Error::Serialization(err)))?;
+            .or_else(|err| Err(Error::SerdeError(err)))?;
 
         Channel::new(ms)
     }
 
     pub fn new_u8(mo: &[u8]) -> Result<Self, Error> {
         let ms: ChannelToParseJSON = serde_json::from_slice(mo)
-            .or_else(|err| Err(Error::Serialization(err)))?;
+            .or_else(|err| Err(Error::SerdeError(err)))?;
 
         Channel::new(ms)
     }
 
-    fn new<'a>(ms: ChannelToParseJSON) -> Result<Self, Error<'a>> {
+    fn new(ms: ChannelToParseJSON) -> Result<Self, Error> {
         let mutators = ms.channel.into_iter()
             .filter_map(|x| factory(x.clone())
                 .or_else(|| {
@@ -61,7 +61,7 @@ impl Deref for Channel {
     }
 }
 
-pub fn parse_and_modify_u8<'a>(input_data: &[u8], mods: &'a Channel) -> Result<Vec<u8>, Error<'a>> {
+pub fn parse_and_modify_u8(input_data: &[u8], mods: &Channel) -> Result<Vec<u8>, Error> {
     if mods.len() == 0 {
         return Err(Error::EmptyMutator);
     }
@@ -83,24 +83,22 @@ pub fn parse_and_modify_u8<'a>(input_data: &[u8], mods: &'a Channel) -> Result<V
     match maybe_value {
         Some(x) => parse_and_modify(x, mods),
         None => serde_json::from_slice(input_data)
-            .or_else(|err| Err(Error::Serialization(err)))
+            .or_else(|err| Err(Error::SerdeError(err)))
             .and_then(|x| parse_and_modify(x, mods)),
     }
 }
 
 fn parse_and_modify(mut p: Value, mods: &Channel) -> Result<Vec<u8>, Error> {
     let mutp = p.as_object_mut()
-        .ok_or(Error::SerializationString("error trying to create mutable reference to json".to_string()))?;
+        .ok_or(Error::Serializing("error trying to create mutable reference to json".to_string()))?;
 
     for modifier in mods.iter() {
         match modifier.mutate(mutp.borrow_mut()) {
-            Some(err) => {
-                log::warn!("error trying to modify json '{}'", err);
-            }
+            Some(err) => log::warn!("error trying to modify json '{}'", err),
             _ => (),
         }
     }
 
     serde_json::to_vec(&mutp)
-        .or_else(|err: serde_json::error::Error| Err(Error::Serialization(err)))
+        .or_else(|err: serde_json::error::Error| Err(Error::SerdeError(err)))
 }

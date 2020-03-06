@@ -14,10 +14,9 @@ use serde_urlencoded;
 
 use sledge::channels::parser::Channel;
 use sledge::components::rocks;
-use sledge::components::storage::Error;
+use sledge::components::errors::Error;
 use sledge::server::handlers;
 use sledge::server::query::Query;
-use sledge::server::responses::new_error;
 
 fn get_query(uri: &Uri) -> Option<Query> {
     serde_urlencoded::from_str::<Query>(uri.query()?).ok()
@@ -88,7 +87,7 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 
     let maybe_channel = match get_channel(&maybe_query) {
         Ok(res) => res,
-        Err(err) => return Ok(new_error(err, None)),
+        Err(err) => return Ok(err.into()),
     };
 
     let spath = SPath {
@@ -97,71 +96,69 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
         maybe_id: path.get(2).cloned(),
     };
 
-    match parts.method {
-        Method::GET => return method_get_handlers(GetRequest { path: spath, maybe_channel, maybe_query }).await,
-        Method::PUT => return method_put_handlers(PRequest { path: spath, maybe_query, maybe_channel, body }).await,
-        Method::POST => return method_post_handlers(PRequest { path: spath, maybe_query, maybe_channel, body }).await,
-        _ => println!("method not recognized"),
+    let res = match parts.method {
+        Method::GET => method_get_handlers(GetRequest { path: spath, maybe_channel, maybe_query }).await,
+        Method::PUT => method_put_handlers(PRequest { path: spath, maybe_query, maybe_channel, body }).await,
+        Method::POST => method_post_handlers(PRequest { path: spath, maybe_query, maybe_channel, body }).await,
+        _ => Err(Error::MethodNotFound),
+    };
+
+    match res {
+        Ok(res) => Ok(res),
+        Err(err) => Ok(err.into())
     }
-
-    let resp = http::Response::new(Body::from("ok"));
-
-    Ok(resp)
 }
 
-async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Infallible> {
+async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Error> {
     return match (req.path.maybe_route, req.path.maybe_cf, req.path.maybe_id) {
         (Some("db"), Some(cf_name), Some(id)) => {
-            let maybe_post_channel = match get_channel_or_err(req.body, cf_name).await {
+            let maybe_post_channel = match get_channel_or_err(req.body).await {
                 Ok(ch) => Some(ch),
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(From::from(e)),
             }.or(req.maybe_channel);
 
             match id {
                 "_all" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
                 "_since" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
                 "_create" => handlers::range(req.maybe_query, None, cf_name, maybe_post_channel).await,
-                id => handlers::get(req.maybe_query, cf_name, id, maybe_post_channel)
-                    .and_then(|res| Ok(res)).or_else(|err| Ok(err)),
+                id => handlers::get(cf_name, id, &maybe_post_channel)
+                    .and_then(|res| Ok(res)).or_else(|err| Ok(err.into())),
             }
         }
-        _ => Ok(new_error("not enough info to process request", None)),
+        _ => Err(Error::WrongQuery),
     };
 }
 
-async fn method_put_handlers(req: PRequest<'_>) -> Result<Response<Body>, Infallible> {
+async fn method_put_handlers(req: PRequest<'_>) -> Result<Response<Body>, Error> {
     return match (req.path.maybe_route, req.path.maybe_cf) {
         (Some("db"), Some(cf_name)) =>
-            handlers::put(cf_name, req.maybe_query, req.path.maybe_id, req.body, req.maybe_channel).await
-                .and_then(|res| Ok(res)).or_else(|err| Ok(err)),
-        _ => Ok(new_error("not enough info to process request", None)),
+            handlers::put(cf_name, &req.maybe_query, req.path.maybe_id, req.body, &req.maybe_channel).await
+                .and_then(|res| Ok(res)).or_else(|err| Ok(err.into())),
+        _ => Err(Error::WrongQuery),
     };
 }
 
-async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Infallible> {
+async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Error> {
     return match (req.path.maybe_route, req.path.maybe_cf, req.path.maybe_id) {
         (Some("db"), Some(cf_name), Some(id)) => {
             match id {
                 "_all" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
                 "_since" => return handlers::range(req.maybe_query, None, cf_name, req.maybe_channel).await,
-                id => handlers::get(req.maybe_query, cf_name, id, req.maybe_channel)
-                    .and_then(|res| Ok(res)).or_else(|err| Ok(err)),
+                id => handlers::get(cf_name, id, &req.maybe_channel)
+                    .and_then(|res| Ok(res)).or_else(|err| Ok(err.into())),
             }
         }
-        _ => Ok(new_error("not enough info to process request", None)),
+        _ => Err(Error::WrongQuery),
     };
 }
 
-async fn get_channel_or_err(body: Body, cf_name: &str) -> Result<Channel, Response<Body>> {
+async fn get_channel_or_err(body: Body) -> Result<Channel, Error> {
     let whole_body = match hyper::body::to_bytes(body).await {
-        Err(err) => return Err(new_error(err, Some(cf_name))),
+        Err(err) => return Err(Error::BodyParsingError(err)),
         Ok(body) => body,
     };
 
-    Ok(match Channel::new_u8(whole_body.as_ref()) {
-        Err(err) => return Err(new_error(err, Some(cf_name))),
-        Ok(ch) => ch,
-    })
+    Channel::new_u8(whole_body.as_ref())
 }
 
 fn get_channel(maybe_query: &Option<Query>) -> Result<Option<Channel>, Error>

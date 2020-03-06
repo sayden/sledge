@@ -3,13 +3,21 @@ use hyper::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::components::errors::Error;
+
 #[derive(Serialize, Deserialize)]
 pub struct RangeResult {
     id: String,
     data: Box<Value>,
 }
 
-pub fn new_range_result(id: &[u8], data: &[u8]) -> Option<String> {
+pub fn new_range_result_string(id: &[u8], data: &[u8]) -> Option<String> {
+    serde_json::to_string(&new_range_result(id, data)?)
+        .map_err(|err| log::warn!("error parsing range result {}", err.to_string()))
+        .ok()
+}
+
+pub fn new_range_result(id: &[u8], data: &[u8]) -> Option<RangeResult> {
     let id_ = std::str::from_utf8(id).unwrap_or_default();
 
     let data: Box<Value> = box match serde_json::from_slice(data) {
@@ -20,89 +28,95 @@ pub fn new_range_result(id: &[u8], data: &[u8]) -> Option<String> {
         }
     };
 
-    serde_json::to_string(&RangeResult { id: id_.into(), data }).ok()
+    Some(RangeResult { id: id_.into(), data })
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct ResultEmbeddedReply<C: ToString, D: Serialize> {
+pub(crate) struct ResultEmbeddedReply<C: ToString> {
     pub(crate)error: bool,
     pub(crate)cause: Option<C>,
-    pub(crate)db: Option<D>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct ReadReply<C: ToString, Db: Serialize> {
-    pub(crate)result: ResultEmbeddedReply<C, Db>,
+pub(crate) struct ReadReply<C: ToString> {
+    pub(crate)result: ResultEmbeddedReply<C>,
     pub(crate)data: Option<Box<Value>>,
     pub(crate)id: Option<C>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ErrorReply<C: ToString, Db: Serialize> {
-    pub(crate)result: ResultEmbeddedReply<C, Db>,
-}
-
-pub fn new_read_ok(res: &[u8], id: &str, db: &str) -> Response<Body> {
-    let data: Box<Value> = box match serde_json::from_slice(res) {
-        Ok(res) => res,
-        Err(err) => return new_error(err, Some(&db)),
-    };
-
-    response_from_body(match serde_json::to_string(&ReadReply::<&str, &str> {
-        result: ResultEmbeddedReply {
+impl<C: ToString> ResultEmbeddedReply<C> {
+    pub fn ok() -> Self {
+        ResultEmbeddedReply {
             error: false,
             cause: None,
-            db: Some(db),
-        },
-        data: Some(data),
-        id: Some(id),
-    }) {
-        Ok(s) => s,
-        Err(err) => err.to_string(),
-    })
-}
+        }
+    }
 
-pub fn new_error<C: ToString>(cause: C, db: Option<&str>) -> Response<Body> {
-    response_from_body(match serde_json::to_string(&ErrorReply::<&str, &str> {
-        result: ResultEmbeddedReply {
+    pub fn error(err: C) -> Self {
+        ResultEmbeddedReply {
             error: true,
-            cause: Some(&cause.to_string()),
-            db,
-        },
-    }) {
-        Ok(s) => s,
-        Err(err) => err.to_string(),
-    })
+            cause: Some(err),
+        }
+    }
 }
 
+impl<C: ToString + Serialize> From<ReadReply<C>> for Response<Body> {
+    fn from(r: ReadReply<C>) -> Self {
+        response_from_body(serde_json::to_string(&r)
+            .unwrap_or_else(|err| err.to_string()))
+            .unwrap_or_else(|err| unknown_error(err.to_string()))
+    }
+}
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct WriteReply<'a, C: ToString, D: Serialize> {
-    pub(crate)result: ResultEmbeddedReply<C, D>,
+pub(crate) struct ErrorReply<C: ToString> {
+    pub(crate)result: ResultEmbeddedReply<C>,
+}
+
+pub fn new_read_ok<'a>(res: &[u8], id: &str) -> Result<Response<Body>, Error> {
+    let data: Box<Value> = box serde_json::from_slice(res)
+        .map_err(Error::SerdeError)?;
+
+    let reply = ReadReply::<&str> {
+        result: ResultEmbeddedReply::ok(),
+        data: Some(data),
+        id: Some(id),
+    };
+
+    Ok(reply.into())
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct WriteReply<'a, C: ToString> {
+    pub(crate)result: ResultEmbeddedReply<C>,
     pub(crate)id: Option<&'a str>,
 }
 
-pub fn new_write_ok(id: &str, db: &str) -> Response<Body> {
-    response_from_body(match serde_json::to_string(&WriteReply::<&str, &str> {
-        result: ResultEmbeddedReply {
-            error: false,
-            cause: None,
-            db: Some(db),
-        },
-        id: Some(id),
-    }) {
-        Ok(s) => s,
-        Err(err) => err.to_string(),
-    })
+impl<'a, C: ToString + Serialize> From<WriteReply<'a, C>> for Response<Body> {
+    fn from(r: WriteReply<'a, C>) -> Self {
+        response_from_body(serde_json::to_string(&r)
+            .unwrap_or_else(|err| err.to_string()))
+            .unwrap_or_else(|err| unknown_error(err.to_string()))
+    }
 }
 
-fn response_from_body(body: String) -> Response<Body> {
+pub fn response_from_body<'a>(body: String) -> Result<Response<Body>, Error> {
     http::Response::builder()
         .header(
             "Content-Type",
             "application/json",
         )
         .body(Body::from(body))
-        .unwrap_or_else(|err| http::Response::new(Body::from(err.to_string())))
+        .map_err(Error::GeneratingResponse)
 }
 
+pub fn unknown_error(err: String) -> Response<Body> {
+    http::Response::builder()
+        .header(
+            "Content-Type",
+            "application/json",
+        )
+        .body(Body::from(
+            format!(r#"{{"result":{{"error":"true", "cause":"{}"}}}}"#, err)))
+        .unwrap()
+}

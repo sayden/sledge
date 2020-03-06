@@ -6,9 +6,9 @@ use rocksdb::{DBIterator, IteratorMode, Options};
 use lazy_static::lazy_static;
 
 use crate::channels::parser::{Channel, parse_and_modify_u8};
-use crate::components::storage::{Error, IterMod};
+use crate::components::errors::Error;
 use crate::server::query::Query;
-use crate::server::responses::new_range_result;
+use crate::server::responses::new_range_result_string;
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
@@ -17,6 +17,12 @@ lazy_static! {
 
         db
     };
+}
+
+pub enum IterMod {
+    Skip(usize),
+    Limit(usize),
+    UntilKey(String),
 }
 
 pub type StreamItem = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
@@ -36,33 +42,33 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
         }
     };
 
-    let cf = DB.cf_handle(cf_name).ok_or(Error::CFNotFound(cf_name))?;
-    let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(|err| Error::Iterator(err.to_string()))?;
+    let cf = DB.cf_handle(cf_name).ok_or(Error::CFNotFound(cf_name.to_string()))?;
+    let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
     let new_iter: RocksIter = box source_iter;
     let iter = match get_itermods(&maybe_query) {
+        None => new_iter,
         Some(iterators) => {
             iterators.into_iter().fold(new_iter, |acc, m| {
                 match m {
                     IterMod::Limit(n) => box Iterator::take(acc, n),
                     IterMod::Skip(n) => box Iterator::skip(acc, n),
                     IterMod::UntilKey(id) => box Iterator::
-                    take_while(acc, move |x| x.0.to_vec() != Vec::from(id.clone())),       //TODO Fix this... please...
+                    take_while(acc, move |x| x.0.to_vec() != Vec::from(id.clone())),       //TODO Fix this...
                 }
             })
         }
-        _ => new_iter
     };
 
     let thread_iter: ThreadByteIter = match maybe_channel {
         Some(ch) => box iter
             .flat_map(move |tuple| parse_and_modify_u8(tuple.1.as_ref(), &ch).ok()
                 .map(|x| (tuple.0, x)))
-            .flat_map(|tuple| new_range_result(tuple.0.as_ref(), &tuple.1))
+            .flat_map(|tuple| new_range_result_string(tuple.0.as_ref(), &tuple.1))
             .map(|v| Ok(Bytes::from(v))),
 
         None => box iter
-            .flat_map(|tuple| new_range_result(tuple.0.as_ref(), tuple.1.as_ref()))
+            .flat_map(|tuple| new_range_result_string(tuple.0.as_ref(), tuple.1.as_ref()))
             .map(|v| Ok(Bytes::from(v))),
     };
 
@@ -70,21 +76,12 @@ pub fn range(maybe_query: Option<Query>, maybe_id: Option<String>, cf_name: &str
 }
 
 
-pub fn get<'a>(keyspace: &'a str, k: &'a str) -> Result<Vec<u8>, Error<'a>> {
-    let cf = DB.cf_handle(&keyspace);
-
-    let res = match cf {
-        Some(cf) => DB.get_cf(cf, k.clone()),
-        None => DB.get(k.clone()),
-    }.or_else(|err| Err(Error::Get(err.to_string())))?;
-
-    match res {
-        Some(v) => Ok(v),
-        None => Err(Error::NotFound(k)),
-    }
+pub fn get<'a>(db: &'a str, id: &'a str) -> Result<Vec<u8>, Error> {
+    let cf = DB.cf_handle(&db).ok_or(Error::CFNotFound(db.to_string()))?;
+    DB.get_cf(cf, id).map_err(Error::RocksDB)?.ok_or(Error::NotFound(id.to_string()))
 }
 
-pub fn put<'a>(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error<'a>> {
+pub fn put<'a>(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
     let cf = DB.cf_handle(cf_name).ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
     DB.put_cf(cf, k, v).or_else(|err| Err(Error::Put(err.to_string())))
 }
