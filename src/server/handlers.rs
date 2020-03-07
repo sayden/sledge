@@ -5,86 +5,92 @@ use hyper::Body;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::channels::parser::{parse_and_modify_u8, Channel};
+use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::errors::Error;
 use crate::components::rocks;
+use crate::components::rocks::SledgeIterator;
+use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
-use crate::server::responses::{
-    new_read_ok, range_result_to_string, ResultEmbeddedReply, WriteReply,
-};
+use crate::server::reply::Reply;
+use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_iter};
 
-type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
-type BytesResultStream = Box<dyn Stream<Item = BytesResult> + Send + Sync>;
-type BytesResultIterator = dyn Iterator<Item = BytesResult> + Send + Sync;
+pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
+pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
+pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
 
 struct IndexedValue {
     key: String,
     value: String,
 }
 
-pub async fn create(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
-    let id = query.clone()
-        .map(|q| q.field_path)
-        .flatten()
-        .ok_or(Error::MissingID)?;
+// pub async fn create(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
+//     let id = query
+//         .clone()
+//         .map(|q| q.field_path)
+//         .flatten()
+//         .ok_or(Error::MissingID)?;
+//
+//     let iter: SledgeIterator = rocks::range(query, None, cf_name, None)?;
+//
+//     let new_cf_name = format!("{}_by_{}", cf_name, id);
+//
+//     let final_iter = iter
+//         .flat_map(|x| (x.k, serde_json::to_value(x.v)
+//             .map_err(|err| log::warn!("error trying to get json from value: {}", err.to_string()))
+//             .ok()?))
+//         .flat_map(|x| {
+//             json_nested_value(&id, x.1)
+//                 .as_str()
+//                 .map(|k| IndexedValue {
+//                     key: format!("{}{}", k, x.0),
+//                     value: format!("\"{}\"", x.1),
+//                 })
+//         })
+//         .flat_map(
+//             |x| match rocks::put(&new_cf_name, &x.key, Bytes::from(x.value)) {
+//                 Ok(()) => None,
+//                 Err(err) => Some(err.to_string()),
+//             },
+//         );
+//
+//     let res = final_iter.fold((0, "".to_string()), |acc, err| {
+//         (acc.0 + 1, format!("{}, {}", acc.1, err))
+//     });
+//
+//     Ok(if res.0 > 0 {
+//         WriteReply::<&str> {
+//             result: ResultEmbeddedReply::error(res.1.as_str()),
+//             id: None,
+//         }
+//     } else {
+//         WriteReply::<&str> {
+//             result: ResultEmbeddedReply::ok(),
+//             id: None,
+//         }
+//     }
+//         .into())
+// }
 
-    let iter = rocks::range(query, None, cf_name, None)?;
-
-    let new_cf_name = format!("{}_by_{}", cf_name, id);
-    let final_iter = iter
-        .flat_map(|x| {
-            json_nested_value(&id, &x.data.clone())
-                .as_str()
-                .map(|k| IndexedValue {
-                    key: format!("{}{}", k, x.id),
-                    value: format!("\"{}\"", x.id),
-                })
-        })
-        .flat_map(
-            |x| match rocks::put(&new_cf_name, &x.key, Bytes::from(x.value)) {
-                Ok(()) => None,
-                Err(err) => Some(err.to_string()),
-            },
-        );
-
-    let res = final_iter.fold((0, "".to_string()), |acc, err| {
-        (acc.0 + 1, format!("{}, {}", acc.1, err))
-    });
-
-    if res.0 > 0 {
-        Ok(WriteReply::<&str> {
-            result: ResultEmbeddedReply::error(res.1.as_str()),
-            id: None,
-        }
-        .into())
-    } else {
-        Ok(WriteReply::<&str> {
-            result: ResultEmbeddedReply::ok(),
-            id: None,
-        }
-        .into())
-    }
+pub async fn range_prefix(
+    query: Option<Query>,
+    id: &str,
+    cf_name: &str,
+) -> Result<Response<Body>, Error> {
+    let iter = rocks::range_prefix(id, cf_name)?;
+    let include_key = query.and_then(|q| q.include_id).unwrap_or_else(|| false);
+    get_iterating_response(iter, include_key)
 }
 
 pub async fn range(
     query: Option<Query>,
     path_id: Option<&str>,
     cf_name: &str,
-    channel: Option<Channel>,
 ) -> Result<Response<Body>, Error> {
-    let maybe_id = get_id(&query, path_id, None);
+    let id = get_id(&query, path_id, None);
 
-    let thread_iter: Box<BytesResultIterator> =
-        box rocks::range(query, maybe_id, cf_name, channel)?
-            .map(|rr| range_result_to_string(&rr))
-            .flat_map(|s| s.map(|s| Ok(Bytes::from(s))));
-
-    let stream: BytesResultStream = box futures::stream::iter(thread_iter);
-
-    http::Response::builder()
-        .header("Content-Type", "application/octet-stream")
-        .body(Body::from(stream))
-        .map_err(Error::GeneratingResponse)
+    let iter = rocks::range(&query, id, cf_name)?;
+    let include_key = query.and_then(|q| q.include_id).unwrap_or_else(||false);
+    get_iterating_response(iter, include_key)
 }
 
 pub async fn put<'a>(
@@ -92,33 +98,21 @@ pub async fn put<'a>(
     query: &'a Option<Query>,
     path_id: Option<&str>,
     req: Body,
-    channel: &'a Option<Channel>,
 ) -> Result<Response<Body>, Error> {
     let value = hyper::body::to_bytes(req)
         .await
         .map_err(Error::BodyParsingError)?;
     let id = get_id(&query, path_id, Some(&value)).ok_or(Error::WrongQuery)?;
 
-    let data = match channel {
-        Some(ch) => parse_and_modify_u8(value.as_ref(), ch).map(Bytes::from)?,
-        None => value,
-    };
+    // let data = match channel {
+    //     Some(ch) => parse_and_modify_u8(value.as_ref(), ch).map(Bytes::from)?,
+    //     None => value,
+    // };
 
-    rocks::put(cf, &id, data)?;
+    rocks::put(cf, &id, value)?;
 
-    Ok(WriteReply::<&str> {
-        result: ResultEmbeddedReply::ok(),
-        id: Some(id.as_str()),
-    }
-    .into())
-}
-
-pub fn get_all_dbs() -> Result<Response<Body>, Error> {
-    let res = rocks::get_all_dbs()?;
-
-    let v = serde_json::to_string(&res).map_err(Error::SerdeError)?;
-
-    new_read_ok(v.as_bytes(), None)
+    let res = Reply::ok(None);
+    Ok(res.into())
 }
 
 // pub fn create_cf(cf_name: &str) -> Result<Response<Body>, Error> {
@@ -134,16 +128,52 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
 pub fn get<'a>(
     cf: &'a str,
     id: &'a str,
-    channel: &'a Option<Channel>,
 ) -> Result<Response<Body>, Error> {
     let value = rocks::get(&cf, &id)?;
 
-    let data = match channel {
-        Some(ch) => parse_and_modify_u8(value.as_ref(), &ch).map(Bytes::from)?,
-        None => Bytes::from(value),
+    // let data = match channel {
+    //     Some(ch) => parse_and_modify_u8(value.as_ref(), &ch).map(Bytes::from)?,
+    //     None => Bytes::from(value),
+    // };
+
+    // new_read_ok(data.as_ref(), Some(id))
+    new_read_ok_iter(value)
+}
+
+pub fn get_all_dbs() -> Result<Response<Body>, Error> {
+    let res = rocks::get_all_dbs()?;
+
+    let v = serde_json::to_string(&res).map_err(Error::SerdeError)?;
+
+    new_read_ok(v.as_bytes(), None)
+}
+
+// fn apply_ch(iter: SledgeIterator, ch: Channel) -> SledgeIterator {
+//     box iter.flat_map(move |sp: SimplePair| parse_and_modify_u8(sp.v.as_slice(), &ch))
+// }
+
+async fn get_channel_or_err(body: Body) -> Result<Channel, Error> {
+    let whole_body = match hyper::body::to_bytes(body).await {
+        Err(err) => return Err(Error::BodyParsingError(err)),
+        Ok(body) => body,
     };
 
-    new_read_ok(data.as_ref(), Some(id))
+    Channel::new_u8(whole_body.as_ref())
+}
+
+fn get_channel(maybe_query: &Option<Query>) -> Result<Option<Channel>, Error> {
+    match maybe_query {
+        None => Ok(None),
+        Some(query) => match &query.channel {
+            Some(channel_id) => {
+                let res = rocks::get("_channel", &channel_id)?.next()
+                    .ok_or(Error::ChannelNotFound(channel_id.to_string()))?;
+                let c = Channel::new_vec(res.v)?;
+                Ok(Some(c))
+            }
+            None => Ok(None),
+        },
+    }
 }
 
 fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>) -> Option<String> {
@@ -166,56 +196,4 @@ fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>) -> 
 
 fn json_nested_value<'a>(k: &str, v: &'a Value) -> &'a Value {
     k.split('.').fold(v, move |acc, x| &acc[x])
-}
-
-#[test]
-fn test_get_id() {
-    let empty_input = None;
-    let s = r#"{"my_key":"my_value"}"#;
-    let json = Bytes::from(s);
-
-    assert_eq!(
-        get_id(
-            &Some(Query {
-                field_path: Some("my_key".to_string()),
-                end: None,
-                limit: None,
-                until_key: None,
-                skip: None,
-                direction_reverse: None,
-                channel: None,
-            }),
-            None,
-            empty_input
-        ),
-        None
-    );
-
-    assert_eq!(
-        get_id(
-            &Some(Query {
-                id_path: Some("my_key".to_string()),
-                end: None,
-                limit: None,
-                until_key: None,
-                skip: None,
-                direction_reverse: None,
-                channel: None,
-            }),
-            Some("hello"),
-            Some(&json)
-        ),
-        Some("my_value".to_string())
-    );
-
-    assert_eq!(
-        get_id(&None, Some("my_key2"), empty_input),
-        Some("my_key2".to_string())
-    );
-    assert_eq!(
-        get_id(&None, Some("my_key2"), empty_input),
-        Some("my_key2".to_string())
-    );
-    assert!(get_id(&None, Some("_auto"), empty_input).is_some());
-    assert_eq!(get_id(&None, None, empty_input), None);
 }

@@ -2,13 +2,15 @@ use std::env;
 
 use bytes::Bytes;
 use rocksdb::{DBIterator, IteratorMode, Options};
+use rocksdb::DBRawIterator;
 
 use lazy_static::lazy_static;
 
-use crate::channels::parser::{parse_and_modify_u8, Channel};
+use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::errors::Error;
 use crate::server::query::Query;
-use crate::server::responses::{new_range_result, RangeResult};
+use crate::server::responses::ToMaybeString;
+use crate::components::simple_pair::SimplePair;
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
@@ -25,17 +27,38 @@ pub enum IterMod {
     UntilKey(String),
 }
 
-type RangeResultIterator = Box<dyn Iterator<Item = RangeResult> + Send + Sync>;
+
+pub type SledgeIterator = Box<dyn Iterator<Item=SimplePair> + Send + Sync>;
+
 type RocksValue = (Box<[u8]>, Box<[u8]>);
-type RocksIter = Box<dyn Iterator<Item = RocksValue> + Send + Sync>;
+type RocksIter = Box<dyn Iterator<Item=RocksValue> + Send + Sync>;
+
+pub struct RawIteratorWrapper<'a> {
+    pub inner: DBRawIterator<'a>,
+}
+
+impl Iterator for RawIteratorWrapper<'_> {
+    type Item = SimplePair;
+
+    fn next<'b>(&mut self) -> Option<<Self as Iterator>::Item> {
+        self.inner.next();
+        if !self.inner.valid() {
+            return None;
+        }
+
+        let k = self.inner.key()?;
+        let v = self.inner.value()?;
+
+        Some(SimplePair::new_u8(k, v))
+    }
+}
 
 pub fn range(
-    query: Option<Query>,
+    query: &Option<Query>,
     id: Option<String>,
     cf_name: &str,
-    channel: Option<Channel>,
-) -> Result<RangeResultIterator, Error> {
-    let direction = get_range_direction(&query);
+) -> Result<SledgeIterator, Error> {
+    let direction = get_range_direction(query);
 
     let mode = match id {
         Some(ref id) => IteratorMode::From(id.as_bytes(), direction),
@@ -50,42 +73,71 @@ pub fn range(
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
     let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
-    let new_iter: RocksIter = box source_iter;
-    let iter = match get_itermods(&query) {
-        None => new_iter,
-        Some(iterators) => {
-            iterators.into_iter().fold(new_iter, |acc, m| {
-                match m {
-                    IterMod::Limit(n) => box Iterator::take(acc, n),
-                    IterMod::Skip(n) => box Iterator::skip(acc, n),
-                    IterMod::UntilKey(id) => box Iterator::take_while(acc, move |x| {
-                        x.0.to_vec() != Vec::from(id.clone())
-                    }), //TODO Fix this...
-                }
-            })
-        }
-    };
+    let sledge_iter: SledgeIterator = box source_iter.map(|i| SimplePair::new_boxed(i));
 
-    let thread_iter: RangeResultIterator = match channel {
-        Some(ch) => box iter
-            .flat_map(move |tuple| {
-                parse_and_modify_u8(tuple.1.as_ref(), &ch)
-                    .ok()
-                    .map(|x| (tuple.0, x))
-            })
-            .flat_map(|tuple| new_range_result(tuple.0.as_ref(), &tuple.1)),
+    Ok(sledge_iter)
 
-        None => box iter.flat_map(|tuple| new_range_result(tuple.0.as_ref(), tuple.1.as_ref())),
-    };
+    // let new_iter: RocksIter = box source_iter;
+    // let iter = match get_itermods(&query) {
+    //     None => new_iter,
+    //     Some(iterators) => {
+    //         iterators.into_iter().fold(new_iter, |acc, m| {
+    //             match m {
+    //                 IterMod::Limit(n) => box Iterator::take(acc, n),
+    //                 IterMod::Skip(n) => box Iterator::skip(acc, n),
+    //                 IterMod::UntilKey(id) => box Iterator::take_while(acc, move |x| {
+    //                     x.0.to_vec() != Vec::from(id.clone())
+    //                 }), //TODO Fix this...
+    //             }
+    //         })
+    //     }
+    // };
 
-    Ok(thread_iter)
+    // let thread_iter: RangeResultIterator = match channel {
+    //     Some(ch) => box iter
+    //         .flat_map(move |tuple| {
+    //             parse_and_modify_u8(tuple.1.as_ref(), &ch)
+    //                 .ok()
+    //                 .map(|x| (tuple.0, x))
+    //         })
+    //         .flat_map(|tuple| RangeResult::new_maybe(tuple.0.as_ref(), &tuple.1)),
+
+    //     None => {
+    //         box iter.flat_map(|tuple| RangeResult::new_maybe(tuple.0.as_ref(), tuple.1.as_ref()))
+    //     }
+    // };
+
+    // Ok(thread_iter)
 }
 
-pub fn get<'a>(db: &'a str, id: &'a str) -> Result<Vec<u8>, Error> {
-    let cf = DB.cf_handle(&db).ok_or_else(|| Error::CFNotFound(db.to_string()))?;
-    DB.get_cf(cf, id)
+pub fn range_prefix<'a>(id: &str, cf_name: &str) -> Result<SledgeIterator, Error> {
+    let cf = DB
+        .cf_handle(cf_name)
+        .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
+    let db_: rocksdb::DB;
+
+    let mut iter = DB.raw_iterator_cf(cf).map_err(Error::RocksDB)?;
+    iter.seek(id);
+
+    let ret_iter: SledgeIterator = box RawIteratorWrapper { inner: iter };
+
+    Ok(ret_iter)
+}
+
+pub fn get<'a>(db: &'a str, id: &'a str) -> Result<SledgeIterator, Error> {
+    let cf = DB
+        .cf_handle(&db)
+        .ok_or_else(|| Error::CFNotFound(db.to_string()))?;
+
+    // let db_: rocksdb::DB;
+    let res = DB
+        .get_cf(cf, id)
         .map_err(Error::RocksDB)?
         .ok_or_else(|| Error::NotFound(id.to_string()))
+        .map(|v| box vec![SimplePair::new_str_vec(id, v)]
+            .into_iter())?;
+
+    Ok(res)
 }
 
 pub fn put<'a>(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
@@ -106,7 +158,7 @@ pub fn get_all_dbs() -> Result<Vec<String>, Error> {
         &rocksdb::Options::default(),
         env::var("FEEDB_PATH").unwrap_or_else(|_| "/tmp/storage".to_string()),
     )
-    .map_err(Error::RocksDB)
+        .map_err(Error::RocksDB)
 }
 
 pub fn new_storage(path: String) -> rocksdb::DB {
@@ -127,7 +179,7 @@ pub fn new_storage(path: String) -> rocksdb::DB {
 
 fn get_itermods(query: &Option<Query>) -> Option<Vec<IterMod>> {
     match query {
-        None => return None,
+        None => None,
         Some(query) => {
             let mut itermods = Vec::new();
             if let Some(skip) = query.skip {
@@ -142,7 +194,7 @@ fn get_itermods(query: &Option<Query>) -> Option<Vec<IterMod>> {
                 itermods.push(IterMod::UntilKey(until_key.clone()))
             }
 
-            if itermods.len() == 0 {
+            if itermods.is_empty() {
                 return None;
             }
 

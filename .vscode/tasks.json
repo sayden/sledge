@@ -11,8 +11,31 @@
             ],
             "options": {
                 "env": {
-                    "RUST_LOG":"debug"
+                    "RUST_LOG": "debug",
+                    "FEEDB_PATH": "/home/mcastro/projects/sledge/storage"
                 }
+            },
+            "presentation": {
+                "clear": true
+            }
+        },
+        {
+            "type": "cargo",
+            "subcommand": "clean",
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "clean"
+        },
+        {
+            "type": "cargo",
+            "subcommand": "check",
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build",
+            "presentation": {
+                "clear": true
             }
         }
     ]

@@ -1,126 +1,65 @@
+use bytes::Bytes;
 use hyper::Body;
 use hyper::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::components::errors::Error;
+use crate::components::rocks::SledgeIterator;
+use crate::components::simple_pair::{simple_pair_to_json, SimplePair, SimplePairJSON};
+use crate::server::handlers::{BytesResultIterator, BytesResultStream};
+use crate::server::reply::Reply;
 
-#[derive(Serialize, Deserialize)]
-pub struct RangeResult {
-    pub id: String,
-    pub data: Box<Value>,
-}
-
-pub fn range_result_to_string(rr: &RangeResult) -> Option<String> {
-    serde_json::to_string(rr)
-        .map_err(|err| log::warn!("error parsing range result {}", err.to_string()))
-        .ok()
-}
-
-pub fn new_range_result_string(id: &[u8], data: &[u8]) -> Option<String> {
-    range_result_to_string(&new_range_result(id, data)?)
-}
-
-pub fn new_range_result(id: &[u8], data: &[u8]) -> Option<RangeResult> {
-    let id_ = std::str::from_utf8(id).unwrap_or_default();
-
-    let data: Box<Value> = box match serde_json::from_slice(data) {
-        Ok(res) => res,
-        Err(err) => {
-            log::warn!("error parsing result data {}", err.to_string());
-            return None;
-        }
-    };
-
-    Some(RangeResult { id: id_.into(), data })
+pub trait ToMaybeString {
+    fn to_maybe_string(self) -> Option<String>;
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct ResultEmbeddedReply<C: ToString> {
-    pub(crate)error: bool,
-    pub(crate)cause: Option<C>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ReadReply<C: ToString> {
-    pub(crate)result: ResultEmbeddedReply<C>,
-    pub(crate)data: Option<Box<Value>>,
-    pub(crate)id: Option<C>,
-}
-
-impl<C: ToString> ResultEmbeddedReply<C> {
-    pub fn ok() -> Self {
-        ResultEmbeddedReply {
-            error: false,
-            cause: None,
-        }
-    }
-
-    pub fn error(err: C) -> Self {
-        ResultEmbeddedReply {
-            error: true,
-            cause: Some(err),
-        }
-    }
-}
-
-impl<C: ToString + Serialize> From<ReadReply<C>> for Response<Body> {
-    fn from(r: ReadReply<C>) -> Self {
-        response_from_body(serde_json::to_string(&r)
-            .unwrap_or_else(|err| err.to_string()))
-            .unwrap_or_else(|err| unknown_error(err.to_string()))
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ErrorReply<C: ToString> {
-    pub(crate)result: ResultEmbeddedReply<C>,
+pub(crate) struct ErrorReply {
+    pub(crate) result: Reply,
 }
 
 pub fn new_read_ok<'a>(res: &[u8], id: Option<&str>) -> Result<Response<Body>, Error> {
     let data: Box<Value> = box serde_json::from_slice(res)
         .map_err(Error::SerdeError)?;
+    let reply = Reply::ok(Some(data));
+    Ok(reply.into())
+}
 
-    let reply = ReadReply::<&str> {
-        result: ResultEmbeddedReply::ok(),
-        data: Some(data),
-        id,
-    };
+pub fn new_read_ok_iter<'a>(iter: SledgeIterator) -> Result<Response<Body>, Error> {
+    let data = box serde_json::to_value(iter
+        .flat_map(|x| simple_pair_to_json(x, true))
+        .collect::<Vec<Value>>())
+        .map_err(Error::SerdeError)?;
+
+    let reply = Reply::ok(Some(data));
 
     Ok(reply.into())
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct WriteReply<'a, C: ToString> {
-    pub(crate)result: ResultEmbeddedReply<C>,
-    pub(crate)id: Option<&'a str>,
-}
+pub fn get_iterating_response(iter: SledgeIterator, include_key: bool) -> Result<Response<Body>, Error> {
+    let thread_iter: Box<BytesResultIterator> = box iter
+        .flat_map(move |x| simple_pair_to_json(x, include_key))
+        .flat_map(|spj| serde_json::to_string(&spj)
+            .map_err(|err| log::warn!("error trying to get json from simpleJSON: {}", err.to_string()))
+            .ok())
+        .map(|s| format!("{}\n", s))
+        .map(|x| Ok(Bytes::from(x)));
 
-impl<'a, C: ToString + Serialize> From<WriteReply<'a, C>> for Response<Body> {
-    fn from(r: WriteReply<'a, C>) -> Self {
-        response_from_body(serde_json::to_string(&r)
-            .unwrap_or_else(|err| err.to_string()))
-            .unwrap_or_else(|err| unknown_error(err.to_string()))
-    }
-}
+    let stream: BytesResultStream = box futures::stream::iter(thread_iter);
 
-pub fn response_from_body<'a>(body: String) -> Result<Response<Body>, Error> {
     http::Response::builder()
-        .header(
-            "Content-Type",
-            "application/json",
-        )
-        .body(Body::from(body))
+        .header("Content-Type", "application/octet-stream")
+        .body(Body::from(stream))
         .map_err(Error::GeneratingResponse)
 }
 
 pub fn unknown_error(err: String) -> Response<Body> {
     http::Response::builder()
-        .header(
-            "Content-Type",
-            "application/json",
-        )
-        .body(Body::from(
-            format!(r#"{{"result":{{"error":"true", "cause":"{}"}}}}"#, err)))
+        .header("Content-Type", "application/json")
+        .body(Body::from(format!(
+            r#"{{"result":{{"error":"true", "cause":"{}"}}}}"#,
+            err
+        )))
         .unwrap()
 }

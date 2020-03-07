@@ -3,7 +3,8 @@ use std::string::FromUtf8Error;
 
 use hyper::{Body, Response};
 
-use crate::server::responses::{ErrorReply, ResultEmbeddedReply, unknown_error};
+use crate::server::responses::{unknown_error};
+use crate::server::reply::Reply;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -49,6 +50,9 @@ pub enum Error {
     #[error("id/db '{0}' not found")]
     NotFound(String),
 
+    #[error("channel '{0}' not found")]
+    ChannelNotFound(String),
+
     #[error("json error: {0}")]
     SerdeError(#[from] serde_json::Error),
 
@@ -73,9 +77,7 @@ pub enum Error {
 
 impl From<Error> for Response<Body> {
     fn from(err: Error) -> Self {
-        let string = match serde_json::to_string(&ErrorReply::<String> {
-            result: ResultEmbeddedReply::error(err.to_string()),
-        }) {
+        let string = match serde_json::to_string(&Reply::error(err)) {
             Ok(s) => s,
             Err(err) => err.to_string(),
         };

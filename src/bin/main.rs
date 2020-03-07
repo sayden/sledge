@@ -8,9 +8,8 @@ use std::task::{Context, Poll};
 
 use futures_util::future;
 use http::{Method, Uri};
-use hyper::service::{make_service_fn, service_fn, Service};
 use hyper::{Body, Request, Response, Server};
-use serde_urlencoded;
+use hyper::service::{make_service_fn, Service, service_fn};
 
 use sledge::channels::parser::Channel;
 use sledge::components::errors::Error;
@@ -24,7 +23,7 @@ fn get_query(uri: &Uri) -> Option<Query> {
 
 fn get_path(p: &str) -> Vec<&str> {
     //TODO use some library for this
-    p.split("/").filter(|x| x != &"").collect()
+    p.split('/').filter(|x| x != &"").collect()
 }
 
 #[derive(Debug)]
@@ -51,15 +50,13 @@ struct SPath<'a> {
     id: Option<&'a str>,
 }
 
-struct GetRequest<'a> {
+struct ReadRequest<'a> {
     path: SPath<'a>,
-    channel: Option<Channel>,
     query: Option<Query>,
 }
 
-struct PRequest<'a> {
+struct BodyRequest<'a> {
     path: SPath<'a>,
-    channel: Option<Channel>,
     query: Option<Query>,
     body: Body,
 }
@@ -85,11 +82,6 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let query = get_query(&parts.uri);
     let path = get_path(parts.uri.path());
 
-    let channel = match get_channel(&query) {
-        Ok(res) => res,
-        Err(err) => return Ok(err.into()),
-    };
-
     let path = SPath {
         route: path.get(0).cloned(),
         cf: path.get(1).cloned(),
@@ -98,30 +90,27 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 
     let res = match parts.method {
         Method::GET => {
-            method_get_handlers(GetRequest {
+            get_handlers(ReadRequest {
                 path,
-                channel,
                 query,
             })
-            .await
+                .await
         }
         Method::PUT => {
-            method_put_handlers(PRequest {
+            put_handlers(BodyRequest {
                 path,
                 query,
-                channel,
                 body,
             })
-            .await
+                .await
         }
         Method::POST => {
-            method_post_handlers(PRequest {
+            post_handlers(BodyRequest {
                 path,
                 query,
-                channel,
                 body,
             })
-            .await
+                .await
         }
         _ => Err(Error::MethodNotFound),
     };
@@ -132,35 +121,29 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     }
 }
 
-async fn method_post_handlers(req: PRequest<'_>) -> Result<Response<Body>, Error> {
-    return match (req.path.route, req.path.cf, req.path.id) {
+async fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
+    match (req.path.route, req.path.cf, req.path.id) {
         (Some("_db"), Some(cf_name), Some(id)) => {
-            let maybe_post_channel = match get_channel_or_err(req.body).await {
-                Ok(ch) => Some(ch),
-                Err(e) => return Ok(From::from(e)),
-            }
-            .or(req.channel);
-
             match id {
-                "_all" => handlers::range(req.query, None, cf_name, maybe_post_channel).await,
-                "_since" => handlers::range(req.query, None, cf_name, maybe_post_channel).await,
-                id => handlers::get(cf_name, id, &maybe_post_channel)
-                    .and_then(|res| Ok(res))
+                "_all" => handlers::range(req.query, None, cf_name).await,
+                "_since" => handlers::range(req.query, None, cf_name).await,
+                id => handlers::get(cf_name, id)
+                    .and_then(Ok)
                     .or_else(|err| Ok(err.into())),
             }
         }
         _ => Err(Error::WrongQuery),
-    };
+    }
 }
 
-async fn method_put_handlers(req: PRequest<'_>) -> Result<Response<Body>, Error> {
-    return match req.path.route {
+async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
+    match req.path.route {
         Some("_db") => match req.path.cf {
             Some(cf_name) => match req.path.id {
-                Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
-                id => handlers::put(cf_name, &req.query, id, req.body, &req.channel)
+                // Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
+                id => handlers::put(cf_name, &req.query, id, req.body)
                     .await
-                    .and_then(|res| Ok(res))
+                    .and_then(Ok)
                     .or_else(|err| Ok(err.into())),
             },
             _ => Err(Error::WrongQuery),
@@ -170,43 +153,27 @@ async fn method_put_handlers(req: PRequest<'_>) -> Result<Response<Body>, Error>
         //     _ => Err(Error::WrongQuery)
         // },
         _ => Err(Error::WrongQuery),
-    };
+    }
 }
 
-async fn method_get_handlers(req: GetRequest<'_>) -> Result<Response<Body>, Error> {
-    return match (req.path.route, req.path.cf, req.path.id) {
+async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
+    match (req.path.route, req.path.cf, req.path.id) {
         (Some("_db"), Some(cf_name), Some(id)) => match id {
-            "_all" => return handlers::range(req.query, None, cf_name, req.channel).await,
-            "_since" => return handlers::range(req.query, None, cf_name, req.channel).await,
-            id => handlers::get(cf_name, id, &req.channel)
-                .and_then(|res| Ok(res))
-                .or_else(|err| Ok(err.into())),
-        },
-        (Some("_db"), Some("_all"), _) => handlers::get_all_dbs(),
-        _ => Err(Error::WrongQuery),
-    };
-}
-
-async fn get_channel_or_err(body: Body) -> Result<Channel, Error> {
-    let whole_body = match hyper::body::to_bytes(body).await {
-        Err(err) => return Err(Error::BodyParsingError(err)),
-        Ok(body) => body,
-    };
-
-    Channel::new_u8(whole_body.as_ref())
-}
-
-fn get_channel(maybe_query: &Option<Query>) -> Result<Option<Channel>, Error> {
-    match maybe_query {
-        None => Ok(None),
-        Some(query) => match &query.channel {
-            Some(channel_id) => {
-                let res = rocks::get("_channel", &channel_id)?;
-                let c = Channel::new_vec(res)?;
-                return Ok(Some(c));
+            "_all" => handlers::range(req.query, None, cf_name).await,
+            "_since" => handlers::range(req.query, None, cf_name).await,
+            id => {
+                if id.ends_with('*') {
+                    handlers::range_prefix(req.query, id.trim_end_matches('*'), cf_name).await
+                        .and_then(Ok)
+                        .or_else(|err| Ok(err.into()))
+                } else {
+                    handlers::get(cf_name, id)
+                        .and_then(Ok)
+                        .or_else(|err| Ok(err.into()))
+                }
             }
-            None => Ok(None),
         },
+        _ => Err(Error::WrongQuery),
     }
 }
 

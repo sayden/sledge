@@ -17,7 +17,7 @@ pub struct Grok_ {
 impl Grok_ {
     pub fn new(field: String, pattern: String, custom: Option<&Vec<Value>>) -> Option<Self> {
         let custom_patterns = custom
-            .and_then(|vec| Some(vec
+            .map(|vec| vec
                 .iter()
                 .filter_map(|v| match v {
                     Value::String(ar) => Some(ar.clone()),
@@ -27,11 +27,11 @@ impl Grok_ {
                     }
                 })
                 .filter_map(|raw_pattern| {
-                    let index = &raw_pattern.find(" ")?;
+                    let index = &raw_pattern.find('.')?;
                     let (a, b) = raw_pattern.split_at(*index);
                     Some((a.to_string(), b.to_string()))
                 })
-                .collect::<Vec<(String, String)>>()));
+                .collect::<Vec<(String, String)>>());
 
 
         let compiled = Grok_::compile(pattern, custom_patterns).ok()?;
@@ -54,8 +54,8 @@ impl Grok_ {
         let mut values: Vec<(String, Value)> = Vec::new();
 
         for (x, y) in matches.iter() {
-            let k = x.clone();
-            let val = y.clone();
+            let k = x;
+            let val = y;
             values.push((k.to_string(), Value::from(val)))
         }
 
@@ -178,9 +178,9 @@ impl Mutator for Grok_ {
         let mut values: Vec<(String, Value)> = Vec::new();
 
         for (x, y) in matches.iter() {
-            let k = x.clone();
-            let val = y.clone();
-            if val.len() != 0 {
+            let k = x;
+            let val = y;
+            if !val.is_empty() {
                 values.push((k.to_string(), Value::from(val)))
             }
         }
