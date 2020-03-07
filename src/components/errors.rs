@@ -11,6 +11,12 @@ pub enum Error {
     #[error("error parsing HTTP body: {0}")]
     BodyParsingError(#[from]hyper::Error),
 
+    #[error("id with key '{0}' was not found in the incoming json")]
+    IdNotFoundInJSON(String),
+
+    #[error("no id found on request")]
+    NoIdFoundOnRequest,
+
     #[error("an ID is required")]
     MissingID,
 

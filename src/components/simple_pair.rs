@@ -3,7 +3,6 @@ use serde_json::Value;
 use uuid::adapter::Simple;
 
 use crate::components::errors::Error;
-use crate::server::responses::ToMaybeString;
 
 pub struct SimplePair {
     pub k: Vec<u8>,
@@ -40,12 +39,12 @@ pub struct SimplePairJSON {
     v: Box<Value>,
 }
 
-pub fn simple_pair_to_json(sp: SimplePair, include_key: bool) -> Option<Value> {
+pub fn simple_pair_to_json(sp: SimplePair, include_id: bool) -> Option<Value> {
     let v: Value = serde_json::from_slice(sp.v.as_slice())
         .map_err(|err| log::warn!("error trying to convert 'value' to string: {}", err.to_string()))
         .ok()?;
 
-    if include_key {
+    if include_id {
         let k = String::from_utf8(sp.k)
             .map_err(|err| log::warn!("error trying to get json from 'key': {}", err.to_string()))
             .ok()?;
@@ -54,7 +53,7 @@ pub fn simple_pair_to_json(sp: SimplePair, include_key: bool) -> Option<Value> {
             .map_err(|err| log::warn!("error trying to get json from simpleJSON: {}", err.to_string()))
             .ok()?;
 
-        return Some(res)
+        return Some(res);
     }
 
     Some(v)

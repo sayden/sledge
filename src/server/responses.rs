@@ -9,15 +9,7 @@ use crate::components::rocks::SledgeIterator;
 use crate::components::simple_pair::{simple_pair_to_json, SimplePair, SimplePairJSON};
 use crate::server::handlers::{BytesResultIterator, BytesResultStream};
 use crate::server::reply::Reply;
-
-pub trait ToMaybeString {
-    fn to_maybe_string(self) -> Option<String>;
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ErrorReply {
-    pub(crate) result: Reply,
-}
+use crate::server::query::Query;
 
 pub fn new_read_ok<'a>(res: &[u8], id: Option<&str>) -> Result<Response<Body>, Error> {
     let data: Box<Value> = box serde_json::from_slice(res)
@@ -37,9 +29,11 @@ pub fn new_read_ok_iter<'a>(iter: SledgeIterator) -> Result<Response<Body>, Erro
     Ok(reply.into())
 }
 
-pub fn get_iterating_response(iter: SledgeIterator, include_key: bool) -> Result<Response<Body>, Error> {
+pub fn get_iterating_response(iter: SledgeIterator, query: Option<Query>) -> Result<Response<Body>, Error> {
+    let include_id = query.and_then(|q| q.include_id).unwrap_or_else(|| false);
+
     let thread_iter: Box<BytesResultIterator> = box iter
-        .flat_map(move |x| simple_pair_to_json(x, include_key))
+        .flat_map(move |x| simple_pair_to_json(x, include_id))
         .flat_map(|spj| serde_json::to_string(&spj)
             .map_err(|err| log::warn!("error trying to get json from simpleJSON: {}", err.to_string()))
             .ok())

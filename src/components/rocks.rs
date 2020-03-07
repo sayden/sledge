@@ -8,9 +8,8 @@ use lazy_static::lazy_static;
 
 use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::errors::Error;
-use crate::server::query::Query;
-use crate::server::responses::ToMaybeString;
 use crate::components::simple_pair::SimplePair;
+use crate::server::query::Query;
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
@@ -53,20 +52,44 @@ impl Iterator for RawIteratorWrapper<'_> {
     }
 }
 
-pub fn range(
+pub fn range_all(
     query: &Option<Query>,
     id: Option<String>,
     cf_name: &str,
 ) -> Result<SledgeIterator, Error> {
     let direction = get_range_direction(query);
-
-    let mode = match id {
-        Some(ref id) => IteratorMode::From(id.as_bytes(), direction),
-        None => match direction {
-            rocksdb::Direction::Forward => IteratorMode::Start,
-            rocksdb::Direction::Reverse => IteratorMode::End,
-        },
+    let mode = match direction {
+        rocksdb::Direction::Forward => IteratorMode::Start,
+        rocksdb::Direction::Reverse => IteratorMode::End,
     };
+
+    let cf = DB
+        .cf_handle(cf_name)
+        .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
+    let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
+
+    let sledge_iter: SledgeIterator = box source_iter.map(|i| SimplePair::new_boxed(i));
+
+    Ok(sledge_iter)
+}
+
+pub fn range_all_reverse(cf_name: &str) -> Result<SledgeIterator, Error> {
+    let cf = DB
+        .cf_handle(cf_name)
+        .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
+    let source_iter: DBIterator = DB.iterator_cf(cf, IteratorMode::End).map_err(Error::RocksDB)?;
+    let sledge_iter: SledgeIterator = box source_iter.map(|i| SimplePair::new_boxed(i));
+
+    Ok(sledge_iter)
+}
+
+pub fn range(
+    query: &Option<Query>,
+    id: &str,
+    cf_name: &str,
+) -> Result<SledgeIterator, Error> {
+    let direction = get_range_direction(query);
+    let mode = IteratorMode::From(id.as_bytes(), direction);
 
     let cf = DB
         .cf_handle(cf_name)
@@ -114,8 +137,6 @@ pub fn range_prefix<'a>(id: &str, cf_name: &str) -> Result<SledgeIterator, Error
     let cf = DB
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
-    let db_: rocksdb::DB;
-
     let mut iter = DB.raw_iterator_cf(cf).map_err(Error::RocksDB)?;
     iter.seek(id);
 

@@ -71,38 +71,37 @@ struct IndexedValue {
 //         .into())
 // }
 
-pub async fn range_prefix(
-    query: Option<Query>,
-    id: &str,
-    cf_name: &str,
-) -> Result<Response<Body>, Error> {
+pub async fn since_prefix(query: Option<Query>, id: &str, cf_name: &str)
+                          -> Result<Response<Body>, Error> {
     let iter = rocks::range_prefix(id, cf_name)?;
-    let include_key = query.and_then(|q| q.include_id).unwrap_or_else(|| false);
-    get_iterating_response(iter, include_key)
+    get_iterating_response(iter, query)
 }
 
-pub async fn range(
-    query: Option<Query>,
-    path_id: Option<&str>,
-    cf_name: &str,
-) -> Result<Response<Body>, Error> {
-    let id = get_id(&query, path_id, None);
-
-    let iter = rocks::range(&query, id, cf_name)?;
-    let include_key = query.and_then(|q| q.include_id).unwrap_or_else(||false);
-    get_iterating_response(iter, include_key)
+pub async fn all(query: Option<Query>, cf_name: &str)
+                 -> Result<Response<Body>, Error> {
+    let iter = rocks::range_all(&query, None, cf_name)?;
+    get_iterating_response(iter, query)
 }
 
-pub async fn put<'a>(
-    cf: &str,
-    query: &'a Option<Query>,
-    path_id: Option<&str>,
-    req: Body,
-) -> Result<Response<Body>, Error> {
+pub async fn all_reverse(query: Option<Query>, cf_name: &str)
+                         -> Result<Response<Body>, Error> {
+    let iter = rocks::range_all_reverse(cf_name)?;
+    get_iterating_response(iter, query)
+}
+
+pub async fn since(query: Option<Query>, id: Option<&str>, cf_name: &str)
+                   -> Result<Response<Body>, Error> {
+    let id = get_id(&query, id, None)?;
+    let iter = rocks::range(&query, id.as_ref(), cf_name)?;
+    get_iterating_response(iter, query)
+}
+
+pub async fn put<'a>(cf: &str, query: &'a Option<Query>, path_id: Option<&str>, req: Body)
+                     -> Result<Response<Body>, Error> {
     let value = hyper::body::to_bytes(req)
         .await
         .map_err(Error::BodyParsingError)?;
-    let id = get_id(&query, path_id, Some(&value)).ok_or(Error::WrongQuery)?;
+    let id = get_id(&query, path_id, Some(&value))?;
 
     // let data = match channel {
     //     Some(ch) => parse_and_modify_u8(value.as_ref(), ch).map(Bytes::from)?,
@@ -125,10 +124,7 @@ pub async fn put<'a>(
 //     .into())
 // }
 
-pub fn get<'a>(
-    cf: &'a str,
-    id: &'a str,
-) -> Result<Response<Body>, Error> {
+pub fn get<'a>(cf: &'a str, id: &'a str) -> Result<Response<Body>, Error> {
     let value = rocks::get(&cf, &id)?;
 
     // let data = match channel {
@@ -176,21 +172,20 @@ fn get_channel(maybe_query: &Option<Query>) -> Result<Option<Channel>, Error> {
     }
 }
 
-fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>) -> Option<String> {
+fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>)
+          -> Result<String, Error> {
     if let Some(q) = query {
         if let (Some(id), Some(req)) = (q.field_path.as_ref(), req) {
-            let j: Value = serde_json::from_slice(req.as_ref()).ok()?;
+            let j: Value = serde_json::from_slice(req.as_ref()).map_err(Error::SerdeError)?;
             let val: &Value = json_nested_value(id, &j);
-            return Some(val.as_str()?.to_string());
+            return Ok(val.as_str().ok_or(Error::IdNotFoundInJSON(id.clone()))?.to_string());
         }
     }
 
-    match path_id {
-        Some(path_id) => match path_id {
-            "_auto" => Some(Uuid::new_v4().to_string()),
-            _ => Some(path_id.to_string()),
-        },
-        None => None,
+    let id = path_id.ok_or(Error::NoIdFoundOnRequest)?;
+    match id {
+        "_auto" => Ok(Uuid::new_v4().to_string()),
+        _ => Ok(id.to_string()),
     }
 }
 

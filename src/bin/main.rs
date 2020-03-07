@@ -47,7 +47,8 @@ impl Service<Request<Body>> for Svc {
 struct SPath<'a> {
     route: Option<&'a str>,
     cf: Option<&'a str>,
-    id: Option<&'a str>,
+    id_or_action: Option<&'a str>,
+    param1: Option<&'a str>,
 }
 
 struct ReadRequest<'a> {
@@ -85,33 +86,14 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let path = SPath {
         route: path.get(0).cloned(),
         cf: path.get(1).cloned(),
-        id: path.get(2).cloned(),
+        id_or_action: path.get(2).cloned(),
+        param1: path.get(3).cloned(),
     };
 
     let res = match parts.method {
-        Method::GET => {
-            get_handlers(ReadRequest {
-                path,
-                query,
-            })
-                .await
-        }
-        Method::PUT => {
-            put_handlers(BodyRequest {
-                path,
-                query,
-                body,
-            })
-                .await
-        }
-        Method::POST => {
-            post_handlers(BodyRequest {
-                path,
-                query,
-                body,
-            })
-                .await
-        }
+        Method::GET => get_handlers(ReadRequest { path, query }).await
+        Method::PUT => put_handlers(BodyRequest { path, query, body }).await
+        Method::POST => post_handlers(BodyRequest { path, query, body }).await
         _ => Err(Error::MethodNotFound),
     };
 
@@ -122,11 +104,9 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 }
 
 async fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
-    match (req.path.route, req.path.cf, req.path.id) {
+    match (req.path.route, req.path.cf, req.path.id_or_action) {
         (Some("_db"), Some(cf_name), Some(id)) => {
             match id {
-                "_all" => handlers::range(req.query, None, cf_name).await,
-                "_since" => handlers::range(req.query, None, cf_name).await,
                 id => handlers::get(cf_name, id)
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into())),
@@ -139,7 +119,7 @@ async fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
 async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     match req.path.route {
         Some("_db") => match req.path.cf {
-            Some(cf_name) => match req.path.id {
+            Some(cf_name) => match req.path.id_or_action {
                 // Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
                 id => handlers::put(cf_name, &req.query, id, req.body)
                     .await
@@ -157,21 +137,22 @@ async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
 }
 
 async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
-    match (req.path.route, req.path.cf, req.path.id) {
+    match (req.path.route, req.path.cf, req.path.id_or_action) {
         (Some("_db"), Some(cf_name), Some(id)) => match id {
-            "_all" => handlers::range(req.query, None, cf_name).await,
-            "_since" => handlers::range(req.query, None, cf_name).await,
-            id => {
+            "_all" => handlers::all(req.query, cf_name).await,
+            "_all_reverse" => handlers::all_reverse(req.query, cf_name).await,
+            "_since" => {
                 if id.ends_with('*') {
-                    handlers::range_prefix(req.query, id.trim_end_matches('*'), cf_name).await
+                    handlers::since_prefix(req.query, id.trim_end_matches('*'), cf_name).await
                         .and_then(Ok)
                         .or_else(|err| Ok(err.into()))
                 } else {
-                    handlers::get(cf_name, id)
-                        .and_then(Ok)
-                        .or_else(|err| Ok(err.into()))
+                    handlers::since(req.query, req.path.param1, cf_name).await
                 }
             }
+            id => handlers::get(cf_name, id)
+                .and_then(Ok)
+                .or_else(|err| Ok(err.into()))
         },
         _ => Err(Error::WrongQuery),
     }
