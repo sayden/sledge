@@ -3,6 +3,7 @@ fn test_parser() {
     #[cfg(test)]
     use crate::channels::parser::Channel;
     use crate::channels::parser::parse_and_modify_u8;
+    env_logger::init();
 
     let data = r#"{"name":"John", "surname": "Doe", "age":43,"delete":"this","phones":["+44 1234567","+44 2345678"],"phones_uk":["+44 1234567","+44 2345678"],"to_sort":[4,3,8],"to_sort_s":["were","asdasd","qweqw"]                  }"#;
 
@@ -80,7 +81,7 @@ fn test_parser() {
 
     let channel = Channel::new_str(mutators_json_array).unwrap();
 
-    let res = parse_and_modify_u8(data.as_bytes(), &channel);
+    let res = parse_and_modify_u8(data.as_bytes(), &channel, Some(true));
     let a = std::str::from_utf8(res.unwrap().as_ref()).unwrap().to_string();
     let b = std::str::from_utf8(expected.as_ref()).unwrap().to_string();
     assert_eq!(a, b)
@@ -92,7 +93,6 @@ fn test_parser_input_plain_text() {
     use crate::channels::parser::Channel;
     use crate::channels::parser::parse_and_modify_u8;
 
-    env_logger::init();
 
     let data = r#"hello world"#;
 
@@ -116,7 +116,7 @@ fn test_parser_input_plain_text() {
 
     let channel = Channel::new_str(mutators_json_array).unwrap();
 
-    let res = parse_and_modify_u8(data.as_bytes(), &channel);
+    let res = parse_and_modify_u8(data.as_bytes(), &channel, None);
     let a = std::str::from_utf8(res.unwrap().as_ref()).unwrap().to_string();
     let b = std::str::from_utf8(expected.as_ref()).unwrap().to_string();
     assert_eq!(a, b)

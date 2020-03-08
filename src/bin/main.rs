@@ -90,10 +90,10 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
         param1: path.get(3).cloned(),
     };
 
-    let res = match parts.method {
-        Method::GET => get_handlers(ReadRequest { path, query }).await
-        Method::PUT => put_handlers(BodyRequest { path, query, body }).await
-        Method::POST => post_handlers(BodyRequest { path, query, body }).await
+    let res: Result<Response<Body>, Error> = match parts.method {
+        Method::GET => get_handlers(ReadRequest { path, query }).await,
+        Method::PUT => put_handlers(BodyRequest { path, query, body }).await,
+        Method::POST => post_handlers(BodyRequest { path, query, body }).await,
         _ => Err(Error::MethodNotFound),
     };
 
@@ -128,6 +128,7 @@ async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
             },
             _ => Err(Error::WrongQuery),
         },
+        Some("_channel") => handlers::put("_channel", &req.query, req.path.cf, req.body).await,
         // (Some("db"), Some(cf_name), Some(id)) => match id {
         //     "_create_db" => handlers::create_db(cf_name),
         //     _ => Err(Error::WrongQuery)
@@ -138,6 +139,7 @@ async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
 
 async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
     match (req.path.route, req.path.cf, req.path.id_or_action) {
+        (Some("_db"), Some("_all"), _) => handlers::get_all_dbs(),
         (Some("_db"), Some(cf_name), Some(id)) => match id {
             "_all" => handlers::all(req.query, cf_name).await,
             "_all_reverse" => handlers::all_reverse(req.query, cf_name).await,

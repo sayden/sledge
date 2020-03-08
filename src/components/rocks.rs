@@ -10,6 +10,7 @@ use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::errors::Error;
 use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
+use crate::components::iterator::{SledgeIterator, RawIteratorWrapper};
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
@@ -27,30 +28,10 @@ pub enum IterMod {
 }
 
 
-pub type SledgeIterator = Box<dyn Iterator<Item=SimplePair> + Send + Sync>;
 
 type RocksValue = (Box<[u8]>, Box<[u8]>);
 type RocksIter = Box<dyn Iterator<Item=RocksValue> + Send + Sync>;
 
-pub struct RawIteratorWrapper<'a> {
-    pub inner: DBRawIterator<'a>,
-}
-
-impl Iterator for RawIteratorWrapper<'_> {
-    type Item = SimplePair;
-
-    fn next<'b>(&mut self) -> Option<<Self as Iterator>::Item> {
-        self.inner.next();
-        if !self.inner.valid() {
-            return None;
-        }
-
-        let k = self.inner.key()?;
-        let v = self.inner.value()?;
-
-        Some(SimplePair::new_u8(k, v))
-    }
-}
 
 pub fn range_all(
     query: &Option<Query>,

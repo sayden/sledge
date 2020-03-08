@@ -12,7 +12,7 @@ use crate::channels::core::Mutator;
 pub struct Join {
     pub field: Value,
     pub separator: String,
-    pub new_field: String,
+    pub new_field: Option<String>,
 }
 
 impl Mutator for Join {
@@ -66,7 +66,9 @@ impl Mutator for Join {
                 }
 
                 let new_value = out.join(self.separator.as_str());
-                v.insert((&self.new_field).clone(), Value::from(new_value));
+                if let Some(f) = &self.new_field {
+                    v.insert(f.clone(), Value::from(new_value));
+                }
 
                 None
             }

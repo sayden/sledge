@@ -61,9 +61,10 @@ impl Deref for Channel {
     }
 }
 
-pub fn parse_and_modify_u8(input_data: &[u8], mods: &Channel) -> Result<Vec<u8>, Error> {
+pub fn parse_and_modify_u8<'a>(input_data: &[u8], mods: &Channel, omit_errors: Option<bool>) -> Option<Vec<u8>> {
     if mods.len() == 0 {
-        return Err(Error::EmptyMutator);
+        log::warn!("mutator list in channel is empty");
+        return None;
     }
 
     let first_mod = mods.first().unwrap();
@@ -79,26 +80,29 @@ pub fn parse_and_modify_u8(input_data: &[u8], mods: &Channel) -> Result<Vec<u8>,
         _ => None,
     };
 
+    let x = maybe_value.or(serde_json::from_slice(input_data)
+        .map_err(|err| log::warn!("error trying to mutate value: {}", err))
+        .ok())?;
 
-    match maybe_value {
-        Some(x) => parse_and_modify(x, mods),
-        None => serde_json::from_slice(input_data)
-            .or_else(|err| Err(Error::SerdeError(err)))
-            .and_then(|x| parse_and_modify(x, mods)),
-    }
+    parse_and_modify(x, mods, omit_errors.unwrap_or(false))
 }
 
-fn parse_and_modify(mut p: Value, mods: &Channel) -> Result<Vec<u8>, Error> {
-    let mutp = p.as_object_mut()
-        .ok_or(Error::Serializing("error trying to create mutable reference to json".to_string()))?;
+fn parse_and_modify(mut p: Value, mods: &Channel, omit_errors: bool) -> Option<Vec<u8>> {
+    let mutp = p.as_object_mut()?;
 
     for modifier in mods.iter() {
         match modifier.mutate(mutp.borrow_mut()) {
-            Some(err) => log::warn!("error trying to modify json '{}'", err),
+            Some(err) => {
+                log::warn!("error trying to modify json '{}'", err);
+                if omit_errors {
+                    return None;
+                }
+            }
             _ => (),
         }
     }
 
     serde_json::to_vec(&mutp)
-        .or_else(|err: serde_json::error::Error| Err(Error::SerdeError(err)))
+        .map_err(|err| log::warn!("error trying to create mutable reference to json: {}", err.to_string()))
+        .ok()
 }

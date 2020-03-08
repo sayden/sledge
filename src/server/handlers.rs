@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::errors::Error;
+use crate::components::iterator::with_channel;
 use crate::components::rocks;
-use crate::components::rocks::SledgeIterator;
 use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
@@ -79,8 +79,12 @@ pub async fn since_prefix(query: Option<Query>, id: &str, cf_name: &str)
 
 pub async fn all(query: Option<Query>, cf_name: &str)
                  -> Result<Response<Body>, Error> {
+    let ch = get_channel(&query)?;
     let iter = rocks::range_all(&query, None, cf_name)?;
-    get_iterating_response(iter, query)
+
+
+    get_iterating_response(
+        with_channel(iter, ch, query.clone().and_then(|q| q.omit_errors)), query)
 }
 
 pub async fn all_reverse(query: Option<Query>, cf_name: &str)

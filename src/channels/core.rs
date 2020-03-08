@@ -87,6 +87,14 @@ impl ToString for MutatorType {
 
 pub fn factory(v: Value) -> Option<Box<dyn Mutator>> {
     let type_: MutatorType = v["type"].as_str()?.parse().ok()?;
+    if type_.to_string() == MutatorType::Join.to_string() {
+        return Some(Box::new(Join {
+            field: v["field"].clone(),
+            separator: v["separator"].as_str()?.to_string(),
+            new_field: v["new_field"].as_str().map(|x| x.to_string()),
+        }));
+    }
+
     let field = v["field"].as_str()?.to_string();
 
     match type_ {
@@ -101,11 +109,6 @@ pub fn factory(v: Value) -> Option<Box<dyn Mutator>> {
         MutatorType::Rename => Some(Box::new(Rename {
             modifier: Mutation { field },
             rename: v["new_name"].as_str()?.to_string(),
-        })),
-        MutatorType::Join => Some(Box::new(Join {
-            field: v["field"].clone(),
-            separator: v["separator"].as_str()?.to_string(),
-            new_field: v["new_field"].as_str().unwrap_or_default().to_string(),
         })),
         MutatorType::Lowercase => Some(Box::new(
             UpperLowercase {
@@ -149,5 +152,6 @@ pub fn factory(v: Value) -> Option<Box<dyn Mutator>> {
                 field,
                 v["pattern"].as_str()?.to_string(),
                 v["custom_patterns"].as_array())?)),
+        _ => None
     }
 }

@@ -12,6 +12,7 @@ pub struct Query {
     pub direction_reverse: Option<bool>,
     pub channel: Option<String>,
     pub include_id: Option<bool>,
+    pub omit_errors: Option<bool>,
 }
 
 impl Display for Query {

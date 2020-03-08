@@ -9,13 +9,15 @@
 
 * [*] Docs prefixed with `/_db/{db}/{id}*`
 
+* [*] Get list of all dbs
+
 ### Options
 * [*] Include id in response
 * [ ] Limit docs
 * [ ] Infinite until finding key
 * [ ] Infinite until finding key in json
 * [ ] Skip N first records
-* [ ] Mutate results by specifying an already stored mutator channel id
+* [*] Mutate results by specifying an already stored mutator channel id
 * [ ] Read to output
 
 ## Write queries
@@ -35,6 +37,7 @@
   * [ ] HTTP
 * [ ] Inputs
   * [ ] Kafka
+  * [ ] NATS
 * [ ] Script mutator
 * [ ] DB Statistics
 * [ ] Keep alive for range queries

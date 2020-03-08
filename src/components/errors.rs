@@ -68,11 +68,8 @@ pub enum Error {
     #[error("id not found in query")]
     WrongQuery,
 
-    #[error("mutator list in channel is empty")]
-    EmptyMutator,
-
-    #[error("error getting channel")]
-    ChannelError,
+    #[error("error applying channel: {0}")]
+    ChannelError(String),
 
     #[error("method not implemented")]
     MethodNotFound,
