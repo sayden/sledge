@@ -1,8 +1,5 @@
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::adapter::Simple;
-
-use crate::components::errors::Error;
 
 pub struct SimplePair {
     pub k: Vec<u8>,

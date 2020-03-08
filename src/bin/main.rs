@@ -11,10 +11,8 @@ use http::{Method, Uri};
 use hyper::{Body, Request, Response, Server};
 use hyper::service::{make_service_fn, Service, service_fn};
 
-use sledge::channels::parser::Channel;
 use sledge::components::errors::Error;
 use sledge::components::rocks;
-use sledge::server::handlers;
 use sledge::server::query::Query;
 
 fn get_query(uri: &Uri) -> Option<Query> {
@@ -107,7 +105,7 @@ async fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     match (req.path.route, req.path.cf, req.path.id_or_action) {
         (Some("_db"), Some(cf_name), Some(id)) => {
             match id {
-                id => handlers::get(cf_name, id)
+                id => handlers::get(cf_name, id, req.query)
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into())),
             }
@@ -128,7 +126,6 @@ async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
             },
             _ => Err(Error::WrongQuery),
         },
-        Some("_channel") => handlers::put("_channel", &req.query, req.path.cf, req.body).await,
         // (Some("db"), Some(cf_name), Some(id)) => match id {
         //     "_create_db" => handlers::create_db(cf_name),
         //     _ => Err(Error::WrongQuery)
@@ -152,7 +149,7 @@ async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
                     handlers::since(req.query, req.path.param1, cf_name).await
                 }
             }
-            id => handlers::get(cf_name, id)
+            id => handlers::get(cf_name, id, req.query)
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into()))
         },

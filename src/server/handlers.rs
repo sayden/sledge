@@ -5,11 +5,10 @@ use hyper::Body;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::channels::parser::{Channel, parse_and_modify_u8};
+use crate::channels::parser::Channel;
 use crate::components::errors::Error;
-use crate::components::iterator::with_channel;
+use crate::components::iterator::{with_channel, with_channel_for_single_value};
 use crate::components::rocks;
-use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
 use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_iter};
@@ -18,10 +17,10 @@ pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
 pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
 
-struct IndexedValue {
-    key: String,
-    value: String,
-}
+// struct IndexedValue {
+//     key: String,
+//     value: String,
+// }
 
 // pub async fn create(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
 //     let id = query
@@ -74,30 +73,33 @@ struct IndexedValue {
 pub async fn since_prefix(query: Option<Query>, id: &str, cf_name: &str)
                           -> Result<Response<Body>, Error> {
     let iter = rocks::range_prefix(id, cf_name)?;
-    get_iterating_response(iter, query)
+    let ch = get_channel(&query)?;
+
+    get_iterating_response(with_channel(iter, ch, &query), query)
 }
 
 pub async fn all(query: Option<Query>, cf_name: &str)
                  -> Result<Response<Body>, Error> {
-    let ch = get_channel(&query)?;
     let iter = rocks::range_all(&query, None, cf_name)?;
-
+    let ch = get_channel(&query)?;
 
     get_iterating_response(
-        with_channel(iter, ch, query.clone().and_then(|q| q.omit_errors)), query)
+        with_channel(iter, ch, &query), query)
 }
 
 pub async fn all_reverse(query: Option<Query>, cf_name: &str)
                          -> Result<Response<Body>, Error> {
     let iter = rocks::range_all_reverse(cf_name)?;
-    get_iterating_response(iter, query)
+    let ch = get_channel(&query)?;
+    get_iterating_response(with_channel(iter, ch, &query), query)
 }
 
 pub async fn since(query: Option<Query>, id: Option<&str>, cf_name: &str)
                    -> Result<Response<Body>, Error> {
     let id = get_id(&query, id, None)?;
     let iter = rocks::range(&query, id.as_ref(), cf_name)?;
-    get_iterating_response(iter, query)
+    let ch = get_channel(&query)?;
+    get_iterating_response(with_channel(iter, ch, &query), query)
 }
 
 pub async fn put<'a>(cf: &str, query: &'a Option<Query>, path_id: Option<&str>, req: Body)
@@ -107,11 +109,8 @@ pub async fn put<'a>(cf: &str, query: &'a Option<Query>, path_id: Option<&str>, 
         .map_err(Error::BodyParsingError)?;
     let id = get_id(&query, path_id, Some(&value))?;
 
-    // let data = match channel {
-    //     Some(ch) => parse_and_modify_u8(value.as_ref(), ch).map(Bytes::from)?,
-    //     None => value,
-    // };
-
+    let ch = get_channel(&query)?;
+    let value = with_channel_for_single_value(value, ch, query);
     rocks::put(cf, &id, value)?;
 
     let res = Reply::ok(None);
@@ -128,16 +127,11 @@ pub async fn put<'a>(cf: &str, query: &'a Option<Query>, path_id: Option<&str>, 
 //     .into())
 // }
 
-pub fn get<'a>(cf: &'a str, id: &'a str) -> Result<Response<Body>, Error> {
-    let value = rocks::get(&cf, &id)?;
+pub fn get<'a>(cf: &'a str, id: &'a str, query: Option<Query>) -> Result<Response<Body>, Error> {
+    let iter = rocks::get(&cf, &id)?;
+    let ch = get_channel(&query)?;
 
-    // let data = match channel {
-    //     Some(ch) => parse_and_modify_u8(value.as_ref(), &ch).map(Bytes::from)?,
-    //     None => Bytes::from(value),
-    // };
-
-    // new_read_ok(data.as_ref(), Some(id))
-    new_read_ok_iter(value)
+    new_read_ok_iter(with_channel(iter, ch, &query))
 }
 
 pub fn get_all_dbs() -> Result<Response<Body>, Error> {
@@ -148,32 +142,15 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
     new_read_ok(v.as_bytes(), None)
 }
 
-// fn apply_ch(iter: SledgeIterator, ch: Channel) -> SledgeIterator {
-//     box iter.flat_map(move |sp: SimplePair| parse_and_modify_u8(sp.v.as_slice(), &ch))
-// }
-
-async fn get_channel_or_err(body: Body) -> Result<Channel, Error> {
-    let whole_body = match hyper::body::to_bytes(body).await {
-        Err(err) => return Err(Error::BodyParsingError(err)),
-        Ok(body) => body,
-    };
-
-    Channel::new_u8(whole_body.as_ref())
-}
-
-fn get_channel(maybe_query: &Option<Query>) -> Result<Option<Channel>, Error> {
-    match maybe_query {
-        None => Ok(None),
-        Some(query) => match &query.channel {
-            Some(channel_id) => {
-                let res = rocks::get("_channel", &channel_id)?.next()
-                    .ok_or(Error::ChannelNotFound(channel_id.to_string()))?;
-                let c = Channel::new_vec(res.v)?;
-                Ok(Some(c))
-            }
-            None => Ok(None),
-        },
+fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
+    if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
+        let res = rocks::get("_channel", &channel_id)?.next()
+            .ok_or(Error::ChannelNotFound(channel_id.to_string()))?;
+        let c = Channel::new_vec(res.v)?;
+        return Ok(Some(c));
     }
+
+    return Ok(None);
 }
 
 fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>)

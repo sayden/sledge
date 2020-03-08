@@ -61,7 +61,7 @@ impl Deref for Channel {
     }
 }
 
-pub fn parse_and_modify_u8<'a>(input_data: &[u8], mods: &Channel, omit_errors: Option<bool>) -> Option<Vec<u8>> {
+pub fn parse_and_modify_u8<'a>(input_data: &[u8], mods: &Channel, omit_errors: bool) -> Option<Vec<u8>> {
     if mods.len() == 0 {
         log::warn!("mutator list in channel is empty");
         return None;
@@ -84,7 +84,7 @@ pub fn parse_and_modify_u8<'a>(input_data: &[u8], mods: &Channel, omit_errors: O
         .map_err(|err| log::warn!("error trying to mutate value: {}", err))
         .ok())?;
 
-    parse_and_modify(x, mods, omit_errors.unwrap_or(false))
+    parse_and_modify(x, mods, omit_errors)
 }
 
 fn parse_and_modify(mut p: Value, mods: &Channel, omit_errors: bool) -> Option<Vec<u8>> {

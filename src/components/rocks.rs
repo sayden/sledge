@@ -2,15 +2,13 @@ use std::env;
 
 use bytes::Bytes;
 use rocksdb::{DBIterator, IteratorMode, Options};
-use rocksdb::DBRawIterator;
 
 use lazy_static::lazy_static;
 
-use crate::channels::parser::{Channel, parse_and_modify_u8};
 use crate::components::errors::Error;
+use crate::components::iterator::{RawIteratorWrapper, SledgeIterator};
 use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
-use crate::components::iterator::{SledgeIterator, RawIteratorWrapper};
 
 lazy_static! {
     static ref DB: rocksdb::DB = {
@@ -26,7 +24,6 @@ pub enum IterMod {
     Limit(usize),
     UntilKey(String),
 }
-
 
 
 type RocksValue = (Box<[u8]>, Box<[u8]>);

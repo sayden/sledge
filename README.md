@@ -24,10 +24,14 @@
 * [ ] Write single doc `/_db/{db}/[{id} / _auto /][?field_path]`
 
 ### Options
-* [ ] Mutate before write specifying an already stored channel id
-* [ ] Get the id from inside the JSON
-* [ ] Auto-generate an id
+* [*] Mutate results by specifying an already stored mutator channel id
+* [*] Get the id from inside the JSON
+* [*] Auto-generate an id
 * [ ] Write from input
+
+## Delete queries
+
+* [ ] Delete single value
 
 ## Other
 
