@@ -2,51 +2,51 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub struct SimplePair {
-    pub k: Vec<u8>,
-    pub v: Vec<u8>,
+    pub id: Vec<u8>,
+    pub value: Vec<u8>,
 }
 
 impl SimplePair {
     pub fn new_u8(k: &[u8], v: &[u8]) -> Self {
         SimplePair {
-            k: k.to_vec(),
-            v: v.to_vec(),
+            id: k.to_vec(),
+            value: v.to_vec(),
         }
     }
 
     pub fn new_boxed(b: (Box<[u8]>, Box<[u8]>)) -> Self {
         SimplePair {
-            k: b.0.to_vec(),
-            v: b.1.to_vec(),
+            id: b.0.to_vec(),
+            value: b.1.to_vec(),
         }
     }
 
     pub fn new_str_vec(k: &str, v: Vec<u8>) -> Self {
-        SimplePair { k: Vec::from(k), v }
+        SimplePair { id: Vec::from(k), value: v }
     }
 
     pub fn new_vec(k: Vec<u8>, v: Vec<u8>) -> Self {
-        SimplePair { k, v }
+        SimplePair { id: k, value: v }
     }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct SimplePairJSON {
-    k: String,
-    v: Box<Value>,
+    id: String,
+    val: Box<Value>,
 }
 
 pub fn simple_pair_to_json(sp: SimplePair, include_id: bool) -> Option<Value> {
-    let v: Value = serde_json::from_slice(sp.v.as_slice())
+    let v: Value = serde_json::from_slice(sp.value.as_slice())
         .map_err(|err| log::warn!("error trying to convert 'value' to string: {}", err.to_string()))
         .ok()?;
 
     if include_id {
-        let k = String::from_utf8(sp.k)
+        let k = String::from_utf8(sp.id)
             .map_err(|err| log::warn!("error trying to get json from 'key': {}", err.to_string()))
             .ok()?;
 
-        let res: Value = serde_json::to_value(&SimplePairJSON { k, v: box v })
+        let res: Value = serde_json::to_value(&SimplePairJSON { id: k, val: box v })
             .map_err(|err| log::warn!("error trying to get json from simpleJSON: {}", err.to_string()))
             .ok()?;
 

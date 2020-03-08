@@ -18,8 +18,8 @@ pub fn with_channel(iter: SledgeIterator, ch: Option<Channel>, q: &Option<Query>
 
     let thread_iter: SledgeIterator = box iter
         .flat_map(move |sp| {
-            parse_and_modify_u8(sp.v.as_slice(), &ch, omit_errors)
-                .map(|x| SimplePair::new_vec(sp.k, x))
+            parse_and_modify_u8(sp.value.as_slice(), &ch, omit_errors)
+                .map(|x| SimplePair::new_vec(sp.id, x))
         });
     thread_iter
 }

@@ -12,16 +12,12 @@ use crate::components::rocks;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
 use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_iter};
+use crate::server::filters::Filters;
 
 pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
 pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
 
-pub enum IterMod {
-    Skip(usize),
-    Limit(usize),
-    UntilKey(String),
-}
 
 // struct IndexedValue {
 //     key: String,
@@ -145,71 +141,26 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
     new_read_ok(v.as_bytes(), None)
 }
 
-struct IterMods {
-    inner: Option<Vec<IterMod>>,
-}
-
-impl IterMods {
-    pub fn new(query: &Query) -> Self {
-        let mut itermods = Vec::new();
-        if let Some(skip) = query.skip {
-            itermods.push(IterMod::Skip(skip))
-        }
-
-        if let Some(limit) = query.limit {
-            itermods.push(IterMod::Limit(limit))
-        }
-
-        if let Some(ref until_key) = query.until_key {
-            itermods.push(IterMod::UntilKey(until_key.clone()))
-        }
-
-        if itermods.is_empty() {
-            return IterMods { inner: None };
-        }
-
-        IterMods { inner: Some(itermods) }
-    }
-
-    pub fn apply(&mut self, iter: SledgeIterator) -> SledgeIterator {
-        if self.inner.as_ref().is_none() {
-            return iter;
-        }
-
-        let iterators = self.inner.take().unwrap();
-        let iter = iterators.into_iter().fold(iter, |acc, m| {
-            match m {
-                IterMod::Limit(n) => box Iterator::take(acc, n),
-                IterMod::Skip(n) => box Iterator::skip(acc, n),
-                _ => box acc,
-                // IterMod::UntilKey(id) => box Iterator::take_while(acc, move |x| {
-                //     x.0.to_vec() != Vec::from(id.clone())  //TODO Fix this...
-            }
-        });
-        iter
-    }
-}
-
 
 fn post_read_actions(iter: SledgeIterator, query: &Option<Query>) -> Result<SledgeIterator, Error> {
     let ch = get_channel(&query)?;
     let iter = with_channel(iter, ch, &query);
 
     let mods = query.as_ref()
-        .map(|q| IterMods::new(q));
-    let iter = match mods {
+        .map(|q| Filters::new(q));
+    let iter2 = match mods {
         Some(mut mods) => mods.apply(iter),
         None => iter,
     };
 
-    Ok(iter)
+    Ok(iter2)
 }
 
 fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
     if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
         let res = rocks::get("_channel", &channel_id)?.next()
             .ok_or(Error::ChannelNotFound(channel_id.to_string()))?;
-        let c = Channel::new_vec(res.v)?;
+        let c = Channel::new_vec(res.value)?;
         return Ok(Some(c));
     }
 
@@ -233,6 +184,6 @@ fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>)
     }
 }
 
-fn json_nested_value<'a>(k: &str, v: &'a Value) -> &'a Value {
+pub fn json_nested_value<'a>(k: &str, v: &'a Value) -> &'a Value {
     k.split('.').fold(v, move |acc, x| &acc[x])
 }

@@ -71,38 +71,6 @@ pub fn range(
     let sledge_iter: SledgeIterator = box source_iter.map(|i| SimplePair::new_boxed(i));
 
     Ok(sledge_iter)
-
-    // let new_iter: RocksIter = box source_iter;
-    // let iter = match get_itermods(&query) {
-    //     None => new_iter,
-    //     Some(iterators) => {
-    //         iterators.into_iter().fold(new_iter, |acc, m| {
-    //             match m {
-    //                 IterMod::Limit(n) => box Iterator::take(acc, n),
-    //                 IterMod::Skip(n) => box Iterator::skip(acc, n),
-    //                 IterMod::UntilKey(id) => box Iterator::take_while(acc, move |x| {
-    //                     x.0.to_vec() != Vec::from(id.clone())
-    //                 }), //TODO Fix this...
-    //             }
-    //         })
-    //     }
-    // };
-
-    // let thread_iter: RangeResultIterator = match channel {
-    //     Some(ch) => box iter
-    //         .flat_map(move |tuple| {
-    //             parse_and_modify_u8(tuple.1.as_ref(), &ch)
-    //                 .ok()
-    //                 .map(|x| (tuple.0, x))
-    //         })
-    //         .flat_map(|tuple| RangeResult::new_maybe(tuple.0.as_ref(), &tuple.1)),
-
-    //     None => {
-    //         box iter.flat_map(|tuple| RangeResult::new_maybe(tuple.0.as_ref(), tuple.1.as_ref()))
-    //     }
-    // };
-
-    // Ok(thread_iter)
 }
 
 pub fn range_prefix<'a>(id: &str, cf_name: &str) -> Result<SledgeIterator, Error> {
@@ -122,7 +90,6 @@ pub fn get<'a>(db: &'a str, id: &'a str) -> Result<SledgeIterator, Error> {
         .cf_handle(&db)
         .ok_or_else(|| Error::CFNotFound(db.to_string()))?;
 
-    // let db_: rocksdb::DB;
     let res = DB
         .get_cf(cf, id)
         .map_err(Error::RocksDB)?

@@ -29,7 +29,7 @@ pub fn new_read_ok_iter<'a>(iter: SledgeIterator) -> Result<Response<Body>, Erro
 }
 
 pub fn get_iterating_response(iter: SledgeIterator, query: Option<Query>) -> Result<Response<Body>, Error> {
-    let include_id = query.and_then(|q| q.include_id).unwrap_or_else(|| false);
+    let include_id = query.and_then(|q| q.include_ids).unwrap_or_else(|| false);
 
     let thread_iter: Box<BytesResultIterator> = box iter
         .flat_map(move |x| simple_pair_to_json(x, include_id))
