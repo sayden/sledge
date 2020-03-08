@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![feature(box_syntax)]
 
-use sledge::channels::parser::Channel;
+use sledge::channels::channel::Channel;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn criterion_benchmark(c: &mut Criterion) {

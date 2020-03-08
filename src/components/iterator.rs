@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use rocksdb::DBRawIterator;
 
-use crate::channels::parser::{Channel, parse_and_modify_u8};
+use crate::channels::channel::{Channel, parse_and_modify_u8};
 use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
 

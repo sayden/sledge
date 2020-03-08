@@ -5,8 +5,8 @@ use grok::{Grok, Pattern};
 use serde::export::Formatter;
 use serde_json::{Map, Value};
 
-use crate::channels::core::*;
-use crate::channels::core::Mutator;
+use crate::channels::mutators::*;
+use crate::channels::mutators::Mutator;
 
 #[derive(Debug)]
 pub struct Grok_ {

@@ -19,12 +19,6 @@ lazy_static! {
     };
 }
 
-pub enum IterMod {
-    Skip(usize),
-    Limit(usize),
-    UntilKey(String),
-}
-
 
 type RocksValue = (Box<[u8]>, Box<[u8]>);
 type RocksIter = Box<dyn Iterator<Item=RocksValue> + Send + Sync>;
@@ -172,32 +166,6 @@ pub fn new_storage(path: String) -> rocksdb::DB {
         Err(e) => {
             log::warn!("{}", e.to_string());
             rocksdb::DB::open(&opts, path).unwrap()
-        }
-    }
-}
-
-fn get_itermods(query: &Option<Query>) -> Option<Vec<IterMod>> {
-    match query {
-        None => None,
-        Some(query) => {
-            let mut itermods = Vec::new();
-            if let Some(skip) = query.skip {
-                itermods.push(IterMod::Skip(skip))
-            }
-
-            if let Some(limit) = query.limit {
-                itermods.push(IterMod::Limit(limit))
-            }
-
-            if let Some(ref until_key) = query.until_key {
-                itermods.push(IterMod::UntilKey(until_key.clone()))
-            }
-
-            if itermods.is_empty() {
-                return None;
-            }
-
-            Some(itermods)
         }
     }
 }

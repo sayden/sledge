@@ -1,8 +1,8 @@
 #[test]
 fn test_parser() {
     #[cfg(test)]
-    use crate::channels::parser::Channel;
-    use crate::channels::parser::parse_and_modify_u8;
+    use crate::channels::channel::Channel;
+    use crate::channels::channel::parse_and_modify_u8;
     env_logger::init();
 
     let data = r#"{"name":"John", "surname": "Doe", "age":43,"delete":"this","phones":["+44 1234567","+44 2345678"],"phones_uk":["+44 1234567","+44 2345678"],"to_sort":[4,3,8],"to_sort_s":["were","asdasd","qweqw"]                  }"#;
@@ -90,8 +90,8 @@ fn test_parser() {
 #[test]
 fn test_parser_input_plain_text() {
     #[cfg(test)]
-    use crate::channels::parser::Channel;
-    use crate::channels::parser::parse_and_modify_u8;
+    use crate::channels::channel::Channel;
+    use crate::channels::channel::parse_and_modify_u8;
 
 
     let data = r#"hello world"#;

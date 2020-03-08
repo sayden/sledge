@@ -4,7 +4,7 @@ use std::ops::Deref;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::channels::core::{factory, Mutator, MutatorType};
+use crate::channels::mutators::{factory, Mutator, MutatorType};
 use crate::components::errors::Error;
 
 pub struct Channel {

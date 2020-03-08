@@ -1,5 +1,5 @@
-use crate::channels::core::Mutator;
-use crate::channels::core::*;
+use crate::channels::mutators::Mutator;
+use crate::channels::mutators::*;
 
 use serde_json::{Map, Value};
 use std::fmt;

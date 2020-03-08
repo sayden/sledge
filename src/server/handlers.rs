@@ -5,9 +5,9 @@ use hyper::Body;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::channels::parser::Channel;
+use crate::channels::channel::Channel;
 use crate::components::errors::Error;
-use crate::components::iterator::{with_channel, with_channel_for_single_value};
+use crate::components::iterator::{SledgeIterator, with_channel, with_channel_for_single_value};
 use crate::components::rocks;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
@@ -16,6 +16,12 @@ use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_
 pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
 pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
+
+pub enum IterMod {
+    Skip(usize),
+    Limit(usize),
+    UntilKey(String),
+}
 
 // struct IndexedValue {
 //     key: String,
@@ -73,33 +79,30 @@ pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
 pub async fn since_prefix(query: Option<Query>, id: &str, cf_name: &str)
                           -> Result<Response<Body>, Error> {
     let iter = rocks::range_prefix(id, cf_name)?;
-    let ch = get_channel(&query)?;
 
-    get_iterating_response(with_channel(iter, ch, &query), query)
+
+    get_iterating_response(post_read_actions(iter, &query)?, query)
 }
 
 pub async fn all(query: Option<Query>, cf_name: &str)
                  -> Result<Response<Body>, Error> {
     let iter = rocks::range_all(&query, None, cf_name)?;
-    let ch = get_channel(&query)?;
 
     get_iterating_response(
-        with_channel(iter, ch, &query), query)
+        post_read_actions(iter, &query)?, query)
 }
 
 pub async fn all_reverse(query: Option<Query>, cf_name: &str)
                          -> Result<Response<Body>, Error> {
     let iter = rocks::range_all_reverse(cf_name)?;
-    let ch = get_channel(&query)?;
-    get_iterating_response(with_channel(iter, ch, &query), query)
+    get_iterating_response(post_read_actions(iter, &query)?, query)
 }
 
 pub async fn since(query: Option<Query>, id: Option<&str>, cf_name: &str)
                    -> Result<Response<Body>, Error> {
     let id = get_id(&query, id, None)?;
     let iter = rocks::range(&query, id.as_ref(), cf_name)?;
-    let ch = get_channel(&query)?;
-    get_iterating_response(with_channel(iter, ch, &query), query)
+    get_iterating_response(post_read_actions(iter, &query)?, query)
 }
 
 pub async fn put<'a>(cf: &str, query: &'a Option<Query>, path_id: Option<&str>, req: Body)
@@ -131,7 +134,7 @@ pub fn get<'a>(cf: &'a str, id: &'a str, query: Option<Query>) -> Result<Respons
     let iter = rocks::get(&cf, &id)?;
     let ch = get_channel(&query)?;
 
-    new_read_ok_iter(with_channel(iter, ch, &query))
+    new_read_ok_iter(post_read_actions(iter, &query)?)
 }
 
 pub fn get_all_dbs() -> Result<Response<Body>, Error> {
@@ -140,6 +143,66 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
     let v = serde_json::to_string(&res).map_err(Error::SerdeError)?;
 
     new_read_ok(v.as_bytes(), None)
+}
+
+struct IterMods {
+    inner: Option<Vec<IterMod>>,
+}
+
+impl IterMods {
+    pub fn new(query: &Query) -> Self {
+        let mut itermods = Vec::new();
+        if let Some(skip) = query.skip {
+            itermods.push(IterMod::Skip(skip))
+        }
+
+        if let Some(limit) = query.limit {
+            itermods.push(IterMod::Limit(limit))
+        }
+
+        if let Some(ref until_key) = query.until_key {
+            itermods.push(IterMod::UntilKey(until_key.clone()))
+        }
+
+        if itermods.is_empty() {
+            return IterMods { inner: None };
+        }
+
+        IterMods { inner: Some(itermods) }
+    }
+
+    pub fn apply(&mut self, iter: SledgeIterator) -> SledgeIterator {
+        if self.inner.as_ref().is_none() {
+            return iter;
+        }
+
+        let iterators = self.inner.take().unwrap();
+        let iter = iterators.into_iter().fold(iter, |acc, m| {
+            match m {
+                IterMod::Limit(n) => box Iterator::take(acc, n),
+                IterMod::Skip(n) => box Iterator::skip(acc, n),
+                _ => box acc,
+                // IterMod::UntilKey(id) => box Iterator::take_while(acc, move |x| {
+                //     x.0.to_vec() != Vec::from(id.clone())  //TODO Fix this...
+            }
+        });
+        iter
+    }
+}
+
+
+fn post_read_actions(iter: SledgeIterator, query: &Option<Query>) -> Result<SledgeIterator, Error> {
+    let ch = get_channel(&query)?;
+    let iter = with_channel(iter, ch, &query);
+
+    let mods = query.as_ref()
+        .map(|q| IterMods::new(q));
+    let iter = match mods {
+        Some(mut mods) => mods.apply(iter),
+        None => iter,
+    };
+
+    Ok(iter)
 }
 
 fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {

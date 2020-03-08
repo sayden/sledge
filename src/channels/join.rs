@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde::export::Formatter;
 use serde_json::{Map, Value};
 
-use crate::channels::core::*;
-use crate::channels::core::Mutator;
+use crate::channels::mutators::*;
+use crate::channels::mutators::Mutator;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Join {

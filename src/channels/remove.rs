@@ -1,4 +1,4 @@
-use crate::channels::core::{Mutator, Mutation, MutatorType};
+use crate::channels::mutators::{Mutator, Mutation, MutatorType};
 use serde_json::{Map, Value};
 use std::fmt;
 use serde::export::Formatter;

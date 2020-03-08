@@ -1,4 +1,4 @@
-pub mod core;
+pub mod mutators;
 
 pub mod remove;
 pub mod upper_lower_case;
@@ -12,5 +12,5 @@ pub mod trim_spaces;
 pub mod trim;
 pub mod sort;
 
-pub mod parser;
+pub mod channel;
 mod test_parser;

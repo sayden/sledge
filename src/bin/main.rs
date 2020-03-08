@@ -13,6 +13,7 @@ use hyper::service::{make_service_fn, Service, service_fn};
 
 use sledge::components::errors::Error;
 use sledge::components::rocks;
+use sledge::server::handlers;
 use sledge::server::query::Query;
 
 fn get_query(uri: &Uri) -> Option<Query> {
@@ -135,20 +136,20 @@ async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
 }
 
 async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
-    match (req.path.route, req.path.cf, req.path.id_or_action) {
-        (Some("_db"), Some("_all"), _) => handlers::get_all_dbs(),
-        (Some("_db"), Some(cf_name), Some(id)) => match id {
+    match (req.path.route, req.path.cf, req.path.id_or_action, req.path.param1) {
+        (Some("_db"), Some("_all"), _, _) => handlers::get_all_dbs(),
+        (Some("_db"), Some(cf_name), Some("_since"), Some(id)) => {
+            if id.ends_with('*') {
+                handlers::since_prefix(req.query, id.trim_end_matches('*'), cf_name).await
+                    .and_then(Ok)
+                    .or_else(|err| Ok(err.into()))
+            } else {
+                handlers::since(req.query, req.path.param1, cf_name).await
+            }
+        }
+        (Some("_db"), Some(cf_name), Some(id), _) => match id {
             "_all" => handlers::all(req.query, cf_name).await,
             "_all_reverse" => handlers::all_reverse(req.query, cf_name).await,
-            "_since" => {
-                if id.ends_with('*') {
-                    handlers::since_prefix(req.query, id.trim_end_matches('*'), cf_name).await
-                        .and_then(Ok)
-                        .or_else(|err| Ok(err.into()))
-                } else {
-                    handlers::since(req.query, req.path.param1, cf_name).await
-                }
-            }
             id => handlers::get(cf_name, id, req.query)
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into()))
