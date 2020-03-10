@@ -13,6 +13,7 @@ use crate::components::errors::Error;
 use crate::components::iterator::{SledgeIterator, with_channel, with_channel_for_single_value};
 use crate::components::rocks;
 use crate::components::sql;
+use crate::components::sql::solve_projection;
 use crate::server::filters::Filters;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
@@ -164,7 +165,8 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
 }
 
 
-fn after_read_sql_actions(iter: SledgeIterator, query: &Option<Query>, ast: Vec<Statement>) -> Result<SledgeIterator, Error> {
+fn after_read_sql_actions(iter: SledgeIterator, query: &Option<Query>, ast: Vec<Statement>)
+                          -> Result<SledgeIterator, Error> {
     let ch = get_channel(&query)?;
     let iter = with_channel(iter, ch, &query);
 

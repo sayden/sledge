@@ -92,6 +92,7 @@ mod expr {
     use futures::future::Either;
     use serde_json::Value as sValue;
     use sqlparser::ast::{BinaryOperator, Expr};
+
     use crate::components::sql::AsValue;
 
     pub fn binary_operation(left: Box<Expr>, op: BinaryOperator, right: Box<Expr>, jj: &sValue) -> bool {
@@ -132,20 +133,20 @@ mod expr {
     }
 }
 
-pub fn solve_projection(projection: Vec<SelectItem>, jj: sValue) -> sValue {
+pub fn solve_projection(projection: Vec<SelectItem>, jj: sValue) -> Option<sValue> {
     let mut out = sValue::from_str("{}").unwrap();
 
     for v in projection {
         match v {
             SelectItem::Wildcard => {
                 println!("Wildcard");
-                return jj;
+                return Some(jj);
             }
             SelectItem::UnnamedExpr(e) => {
                 match e {
                     Expr::Function(f) => println!("Function {:?}", f),
                     Expr::Identifier(i) => {
-                        let a = jj.get(&i).unwrap();
+                        let a = jj.get(&i)?;
                         out[i] = a.clone();
                     }
                     Expr::Value(v) => println!("Value {:?}", v),
@@ -156,7 +157,7 @@ pub fn solve_projection(projection: Vec<SelectItem>, jj: sValue) -> sValue {
         }
     }
 
-    out
+    Some(out)
 }
 
 

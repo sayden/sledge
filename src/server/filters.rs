@@ -2,7 +2,8 @@ use serde_json::Value;
 use sqlparser::ast::{Select, SetExpr, Statement};
 
 use crate::components::iterator::SledgeIterator;
-use crate::components::sql::solve_where;
+use crate::components::simple_pair::SimplePair;
+use crate::components::sql::{solve_projection, solve_where};
 use crate::server::handlers::json_nested_value;
 use crate::server::query::Query;
 
@@ -81,13 +82,20 @@ impl Filters {
                     box Iterator::take_while(acc, move |x| x.id != id),
                 Filter::Sql(s) => {
                     log::info!("ASDFASDFASDFASDF");
-                    box Iterator::filter(acc, move |a| {
+                    box Iterator::filter_map(acc, move |a| {
                         if let Some(statement) = s.first() {
                             if let Statement::Query(q_st) = statement {
                                 if let SetExpr::Select(c) = &q_st.body {
                                     if let Ok(jj) = serde_json::from_slice::<serde_json::Value>(a.value.as_slice()) {
                                         if let Some(selection) = &c.selection {
-                                            return solve_where(selection.clone(), &jj);
+                                            let res = solve_where(selection.clone(), &jj).then_some(solve_projection(c.projection.clone(), jj)?)?;
+                                            let res = serde_json::to_vec(&res)
+                                                .map_err(|err| log::warn!("error trying to get projection: {}", err.to_string()))
+                                                .ok()?;
+                                            return Some(SimplePair {
+                                                id: a.id,
+                                                value: res,
+                                            });
                                         } else {
                                             log::warn!("no selection found")
                                         }
@@ -103,7 +111,7 @@ impl Filters {
                         } else {
                             log::warn!("no statement found")
                         }
-                        return false;
+                        return None;
                     })
                 }
             }
