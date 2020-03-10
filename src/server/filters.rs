@@ -81,35 +81,24 @@ impl Filters {
                 Filter::UntilKey(id) =>
                     box Iterator::take_while(acc, move |x| x.id != id),
                 Filter::Sql(s) => {
-                    log::info!("ASDFASDFASDFASDF");
                     box Iterator::filter_map(acc, move |a| {
-                        if let Some(statement) = s.first() {
-                            if let Statement::Query(q_st) = statement {
-                                if let SetExpr::Select(c) = &q_st.body {
-                                    if let Ok(jj) = serde_json::from_slice::<serde_json::Value>(a.value.as_slice()) {
-                                        if let Some(selection) = &c.selection {
-                                            let res = solve_where(selection.clone(), &jj).then_some(solve_projection(c.projection.clone(), jj)?)?;
-                                            let res = serde_json::to_vec(&res)
-                                                .map_err(|err| log::warn!("error trying to get projection: {}", err.to_string()))
-                                                .ok()?;
-                                            return Some(SimplePair {
-                                                id: a.id,
-                                                value: res,
-                                            });
-                                        } else {
-                                            log::warn!("no selection found")
-                                        }
-                                    } else {
-                                        log::warn!("no serde_json::Value found")
-                                    }
+                        if let Statement::Query(q_st) = s.first()? {
+                            if let SetExpr::Select(c) = &q_st.body {
+                                if let Ok(jj) = serde_json::from_slice::<serde_json::Value>(a.value.as_slice()) {
+                                    let res = solve_where(c.selection.as_ref()?, &jj)
+                                        .then_some(solve_projection(&c.projection, jj)?)?;
+                                    let res = serde_json::to_vec(&res)
+                                        .map_err(|err| log::warn!("error trying to get projection: {}", err.to_string()))
+                                        .ok()?;
+                                    return Some(SimplePair { id: a.id, value: res });
                                 } else {
-                                    log::warn!("no SetExpr::Select found")
+                                    log::warn!("no serde_json::Value found")
                                 }
                             } else {
-                                log::warn!("no Statement::Query found")
+                                log::warn!("no SetExpr::Select found")
                             }
                         } else {
-                            log::warn!("no statement found")
+                            log::warn!("no Statement::Query found")
                         }
                         return None;
                     })

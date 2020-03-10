@@ -27,7 +27,7 @@ pub mod utils {
 }
 
 
-pub fn solve_where(expr: Expr, jj: &sValue) -> bool {
+pub fn solve_where(expr: &Expr, jj: &sValue) -> bool {
     match expr {
         Expr::BinaryOp { left, op, right } => expr::binary_operation(left, op, right, jj),
         _ => false,
@@ -67,11 +67,11 @@ impl SerdeValueWrapper {
 }
 
 trait AsValue {
-    fn serde(self, jj: &sValue) -> Either<SerdeValueWrapper, bool>;
+    fn serde(&self, jj: &sValue) -> Either<SerdeValueWrapper, bool>;
 }
 
 impl AsValue for Expr {
-    fn serde(self, jj: &sValue) -> Either<SerdeValueWrapper, bool> {
+    fn serde(&self, jj: &sValue) -> Either<SerdeValueWrapper, bool> {
         Left(SerdeValueWrapper {
             inner: match self {
                 Expr::Identifier(i) => json_nested_value(i.as_ref(), jj).clone(),
@@ -95,7 +95,7 @@ mod expr {
 
     use crate::components::sql::AsValue;
 
-    pub fn binary_operation(left: Box<Expr>, op: BinaryOperator, right: Box<Expr>, jj: &sValue) -> bool {
+    pub fn binary_operation(left: &Box<Expr>, op: &BinaryOperator, right: &Box<Expr>, jj: &sValue) -> bool {
         let l = left.serde(jj);
         let r = right.serde(jj);
 
@@ -133,7 +133,7 @@ mod expr {
     }
 }
 
-pub fn solve_projection(projection: Vec<SelectItem>, jj: sValue) -> Option<sValue> {
+pub fn solve_projection(projection: &Vec<SelectItem>, jj: sValue) -> Option<sValue> {
     let mut out = sValue::from_str("{}").unwrap();
 
     for v in projection {
