@@ -10,7 +10,6 @@ use hyper::{Body, Request, Response, Server};
 use hyper::service::{make_service_fn, Service, service_fn};
 
 use sledge::components::errors::Error;
-use sledge::components::rocks;
 use sledge::server::handlers;
 use sledge::server::query::Query;
 

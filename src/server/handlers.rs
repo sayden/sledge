@@ -13,7 +13,6 @@ use crate::components::errors::Error;
 use crate::components::iterator::{SledgeIterator, with_channel, with_channel_for_single_value};
 use crate::components::rocks;
 use crate::components::sql;
-use crate::components::sql::solve_projection;
 use crate::server::filters::Filters;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
@@ -151,7 +150,6 @@ pub async fn sql(query: Option<Query>, req: Body) -> Result<Response<Body>, Erro
 
 pub fn get<'a>(cf: &'a str, id: &'a str, query: Option<Query>) -> Result<Response<Body>, Error> {
     let iter = rocks::get(&cf, &id)?;
-    let ch = get_channel(&query)?;
 
     new_read_ok_iter(after_read_actions(iter, &query)?)
 }
@@ -161,7 +159,7 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
 
     let v = serde_json::to_string(&res).map_err(Error::SerdeError)?;
 
-    new_read_ok(v.as_bytes(), None)
+    new_read_ok(v.as_bytes())
 }
 
 

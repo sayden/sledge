@@ -1,5 +1,5 @@
 use serde_json::Value;
-use sqlparser::ast::{Select, SetExpr, Statement};
+use sqlparser::ast::{SetExpr, Statement};
 
 use crate::components::iterator::SledgeIterator;
 use crate::components::simple_pair::SimplePair;
@@ -82,25 +82,53 @@ impl Filters {
                     box Iterator::take_while(acc, move |x| x.id != id),
                 Filter::Sql(s) => {
                     box Iterator::filter_map(acc, move |a| {
-                        if let Statement::Query(q_st) = s.first()? {
-                            if let SetExpr::Select(c) = &q_st.body {
-                                if let Ok(jj) = serde_json::from_slice::<serde_json::Value>(a.value.as_slice()) {
-                                    let res = solve_where(c.selection.as_ref()?, &jj)
-                                        .then_some(solve_projection(&c.projection, jj)?)?;
-                                    let res = serde_json::to_vec(&res)
-                                        .map_err(|err| log::warn!("error trying to get projection: {}", err.to_string()))
-                                        .ok()?;
-                                    return Some(SimplePair { id: a.id, value: res });
-                                } else {
-                                    log::warn!("no serde_json::Value found")
-                                }
-                            } else {
-                                log::warn!("no SetExpr::Select found")
+                        if s.first().is_none() {
+                            log::error!("no statements found on sql");
+                            return None;
+                        }
+
+                        let q_st = if let Statement::Query(temp) = s.first().unwrap() {
+                            temp
+                        } else {
+                            log::warn!("no 'query' found on sql");
+                            return None;
+                        };
+
+                        let c = if let SetExpr::Select(temp) = &q_st.body {
+                            temp
+                        } else {
+                            log::warn!("no 'Select' found on sql");
+                            return None;
+                        };
+
+                        let jj = serde_json::from_slice::<serde_json::Value>(a.value.as_slice())
+                            .map_err(|err| log::warn!("[sql] error trying to get json from db result value: {}", err.to_string()))
+                            .ok()?;
+
+                        if let Some(selection) = &c.selection {
+                            if !solve_where(selection, &jj) {
+                                return None;
                             }
                         } else {
-                            log::warn!("no Statement::Query found")
+                            log::warn!("no selection found on sql");
+                            return None;
                         }
-                        return None;
+
+                        let p = if let Some(temp) = solve_projection(&c.projection, jj) {
+                            temp
+                        } else {
+                            log::warn!("error trying to solve sql projection");
+                            return None;
+                        };
+
+                        let res = serde_json::to_vec(&p)
+                            .map_err(|err| log::warn!("error trying to get projection: {}", err.to_string()))
+                            .ok()?;
+
+                        return Some(SimplePair {
+                            id: a.id,
+                            value: res,
+                        });
                     })
                 }
             }

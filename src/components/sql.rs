@@ -138,10 +138,7 @@ pub fn solve_projection(projection: &Vec<SelectItem>, jj: sValue) -> Option<sVal
 
     for v in projection {
         match v {
-            SelectItem::Wildcard => {
-                println!("Wildcard");
-                return Some(jj);
-            }
+            SelectItem::Wildcard => return Some(jj),
             SelectItem::UnnamedExpr(e) => {
                 match e {
                     Expr::Function(f) => println!("Function {:?}", f),

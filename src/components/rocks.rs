@@ -19,14 +19,9 @@ lazy_static! {
     };
 }
 
-
-type RocksValue = (Box<[u8]>, Box<[u8]>);
-type RocksIter = Box<dyn Iterator<Item=RocksValue> + Send + Sync>;
-
-
 pub fn range_all(
     query: &Option<Query>,
-    id: Option<String>,
+    _id: Option<String>,
     cf_name: &str,
 ) -> Result<SledgeIterator, Error> {
     let direction = get_range_direction(query);
