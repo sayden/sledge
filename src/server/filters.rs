@@ -1,6 +1,8 @@
 use serde_json::Value;
+use sqlparser::ast::{Select, SetExpr, Statement};
 
 use crate::components::iterator::SledgeIterator;
+use crate::components::sql::solve_where;
 use crate::server::handlers::json_nested_value;
 use crate::server::query::Query;
 
@@ -9,6 +11,7 @@ pub enum Filter {
     Limit(usize),
     UntilKey(Vec<u8>),
     FieldEquals(String, String),
+    Sql(Vec<Statement>),
 }
 
 pub struct Filters {
@@ -16,6 +19,10 @@ pub struct Filters {
 }
 
 impl Filters {
+    pub fn new_sql(sql: Vec<Statement>) -> Self {
+        Filters { inner: Some(vec![Filter::Sql(sql)]) }
+    }
+
     pub fn new(query: &Query) -> Self {
         let mut itermods = Vec::new();
         if let Some(skip) = query.skip {
@@ -54,8 +61,8 @@ impl Filters {
         }
 
         let iterators = self.inner.take().unwrap();
-        let iter = iterators.into_iter().fold(iter, move |acc, m| {
-            match  m {
+        iterators.into_iter().fold(iter, move |acc, m| {
+            match m {
                 Filter::Limit(n) => box Iterator::take(acc, n),
                 Filter::Skip(n) => box Iterator::skip(acc, n),
                 Filter::FieldEquals(k, val) => box Iterator::filter(acc, move |x| {
@@ -70,10 +77,36 @@ impl Filters {
                     let right: Value = Value::String(val.clone());
                     *left == right
                 }),
-                Filter::UntilKey(id) => box
-                    Iterator::take_while(acc, move |x| x.id != id),
+                Filter::UntilKey(id) =>
+                    box Iterator::take_while(acc, move |x| x.id != id),
+                Filter::Sql(s) => {
+                    log::info!("ASDFASDFASDFASDF");
+                    box Iterator::filter(acc, move |a| {
+                        if let Some(statement) = s.first() {
+                            if let Statement::Query(q_st) = statement {
+                                if let SetExpr::Select(c) = &q_st.body {
+                                    if let Ok(jj) = serde_json::from_slice::<serde_json::Value>(a.value.as_slice()) {
+                                        if let Some(selection) = &c.selection {
+                                            return solve_where(selection.clone(), &jj);
+                                        } else {
+                                            log::warn!("no selection found")
+                                        }
+                                    } else {
+                                        log::warn!("no serde_json::Value found")
+                                    }
+                                } else {
+                                    log::warn!("no SetExpr::Select found")
+                                }
+                            } else {
+                                log::warn!("no Statement::Query found")
+                            }
+                        } else {
+                            log::warn!("no statement found")
+                        }
+                        return false;
+                    })
+                }
             }
-        });
-        iter
+        })
     }
 }

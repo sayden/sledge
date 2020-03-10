@@ -1,5 +1,6 @@
 #![feature(box_syntax)]
 #![feature(in_band_lifetimes)]
+#![feature(bool_to_option)]
 
 extern crate log;
 

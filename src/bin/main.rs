@@ -1,5 +1,3 @@
-#![feature(box_syntax)]
-
 extern crate hyper;
 extern crate tokio;
 
@@ -104,6 +102,7 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 
 async fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     match (req.path.route, req.path.cf, req.path.id_or_action) {
+        (Some("_sql"), _, _) => handlers::sql(req.query, req.body).await,
         (Some("_db"), Some(cf_name), Some(id)) => {
             match id {
                 id => handlers::get(cf_name, id, req.query)

@@ -3,8 +3,8 @@ use std::string::FromUtf8Error;
 
 use hyper::{Body, Response};
 
-use crate::server::responses::{unknown_error};
 use crate::server::reply::Reply;
+use crate::server::responses::unknown_error;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -34,6 +34,9 @@ pub enum Error {
 
     #[error(transparent)]
     ParseFromUtf8(#[from] FromUtf8Error),
+
+    #[error("utf8 parsing error: {0}")]
+    Utf8Error(String),
 
     #[error("error preparing op: {0}")]
     Preparing(String),
@@ -76,6 +79,9 @@ pub enum Error {
 
     #[error("error generating response: {0}")]
     GeneratingResponse(#[from]http::Error),
+
+    #[error("error parsing sql: {0}")]
+    SqlError(#[from] sqlparser::parser::ParserError),
 }
 
 impl From<Error> for Response<Body> {

@@ -3,16 +3,20 @@ use futures::Stream;
 use http::Response;
 use hyper::Body;
 use serde_json::Value;
+use sqlparser::ast::Statement;
+use sqlparser::dialect::GenericDialect;
+use sqlparser::parser::Parser;
 use uuid::Uuid;
 
 use crate::channels::channel::Channel;
 use crate::components::errors::Error;
 use crate::components::iterator::{SledgeIterator, with_channel, with_channel_for_single_value};
 use crate::components::rocks;
+use crate::components::sql;
+use crate::server::filters::Filters;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
 use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_iter};
-use crate::server::filters::Filters;
 
 pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
@@ -77,7 +81,7 @@ pub async fn since_prefix(query: Option<Query>, id: &str, cf_name: &str)
     let iter = rocks::range_prefix(id, cf_name)?;
 
 
-    get_iterating_response(post_read_actions(iter, &query)?, query)
+    get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
 pub async fn all(query: Option<Query>, cf_name: &str)
@@ -85,20 +89,20 @@ pub async fn all(query: Option<Query>, cf_name: &str)
     let iter = rocks::range_all(&query, None, cf_name)?;
 
     get_iterating_response(
-        post_read_actions(iter, &query)?, query)
+        after_read_actions(iter, &query)?, query)
 }
 
 pub async fn all_reverse(query: Option<Query>, cf_name: &str)
                          -> Result<Response<Body>, Error> {
     let iter = rocks::range_all_reverse(cf_name)?;
-    get_iterating_response(post_read_actions(iter, &query)?, query)
+    get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
 pub async fn since(query: Option<Query>, id: Option<&str>, cf_name: &str)
                    -> Result<Response<Body>, Error> {
     let id = get_id(&query, id, None)?;
     let iter = rocks::range(&query, id.as_ref(), cf_name)?;
-    get_iterating_response(post_read_actions(iter, &query)?, query)
+    get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
 pub async fn put<'a>(cf: &str, query: &'a Option<Query>, path_id: Option<&str>, req: Body)
@@ -116,6 +120,24 @@ pub async fn put<'a>(cf: &str, query: &'a Option<Query>, path_id: Option<&str>, 
     Ok(res.into())
 }
 
+pub async fn sql(query: Option<Query>, req: Body) -> Result<Response<Body>, Error> {
+    let value = hyper::body::to_bytes(req)
+        .await
+        .map_err(Error::BodyParsingError)?;
+    let sql = std::str::from_utf8(value.as_ref())
+        .map_err(|err| Error::Utf8Error(err.to_string()))?;
+
+    let dialect = GenericDialect {};
+    let ast = Parser::parse_sql(&dialect, sql.to_string())
+        .map_err(Error::SqlError)?;
+
+    let from = sql::utils::get_from(&ast).ok_or(Error::CFNotFound("".to_string()))?;
+
+    let iter = rocks::range_all(&None, None, from.as_str())?;
+
+    get_iterating_response(after_read_sql_actions(iter, &query, ast)?, query)
+}
+
 // pub fn create_cf(cf_name: &str) -> Result<Response<Body>, Error> {
 //     rocks::create_cf(cf_name)?;
 
@@ -130,7 +152,7 @@ pub fn get<'a>(cf: &'a str, id: &'a str, query: Option<Query>) -> Result<Respons
     let iter = rocks::get(&cf, &id)?;
     let ch = get_channel(&query)?;
 
-    new_read_ok_iter(post_read_actions(iter, &query)?)
+    new_read_ok_iter(after_read_actions(iter, &query)?)
 }
 
 pub fn get_all_dbs() -> Result<Response<Body>, Error> {
@@ -142,7 +164,17 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
 }
 
 
-fn post_read_actions(iter: SledgeIterator, query: &Option<Query>) -> Result<SledgeIterator, Error> {
+fn after_read_sql_actions(iter: SledgeIterator, query: &Option<Query>, ast: Vec<Statement>) -> Result<SledgeIterator, Error> {
+    let ch = get_channel(&query)?;
+    let iter = with_channel(iter, ch, &query);
+
+    let mods = Filters::new_sql(ast).apply(iter);
+
+    Ok(mods)
+}
+
+
+fn after_read_actions(iter: SledgeIterator, query: &Option<Query>) -> Result<SledgeIterator, Error> {
     let ch = get_channel(&query)?;
     let iter = with_channel(iter, ch, &query);
 

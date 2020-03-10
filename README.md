@@ -20,6 +20,9 @@
 * [*] Skip N first records
 * [*] Mutate results by specifying an already stored mutator channel id
 * [ ] Read to output
+* [ ] SQL that covers SELECT _____ FROM ______ WHERE ______;
+    * [ ] Allow simple `SELECT [field]` and `SELECT *`
+    * [ ] Allow WHERE binary clauses for direct fields like `SELECT * FROM db WHERE age > 30 and name = 'mario'`
 
 ## Write queries
 * [ ] Write single doc `/_db/{db}/[{id} / _auto /][?field_path]`

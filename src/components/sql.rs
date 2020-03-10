@@ -1,154 +1,165 @@
-#![feature(box_syntax)]
-
+use std::cmp::Ordering;
 use std::str::FromStr;
 
-use sqlparser::ast::{BinaryOperator, Expr, Ident, SelectItem, SetExpr, Statement, Value};
+use futures::future::{Either, Either::Left, Either::Right};
+use serde_json::Value as sValue;
+use sqlparser::ast::{Expr, SelectItem};
 
-fn op_equal(vs: (serde_json::Value, serde_json::Value)) -> bool {
-    vs.0 == vs.1
-}
+pub mod utils {
+    use sqlparser::ast::{SetExpr, Statement, TableFactor};
 
-fn op_gt(vs: (serde_json::Value, serde_json::Value)) -> bool {
-    get_numbers(vs.0, vs.1, |a, b| a > b)
-}
-
-fn op_gte(vs: (serde_json::Value, serde_json::Value)) -> bool {
-    get_numbers(vs.0, vs.1, |a, b| a >= b)
-}
-
-fn get_numbers<F>(a: serde_json::Value, b: serde_json::Value, f: F) -> bool
-where
-    F: FnOnce(f64, f64) -> bool,
-{
-    match (a, b) {
-        (serde_json::Value::Number(n1), serde_json::Value::Number(n2)) => {
-            f(n1.as_f64().unwrap(), n2.as_f64().unwrap())
-        }
-        _ => false,
-    }
-}
-
-fn op_lt(vs: (serde_json::Value, serde_json::Value)) -> bool {
-    get_numbers(vs.0, vs.1, |a, b| a < b)
-}
-
-fn op_lte(vs: (serde_json::Value, serde_json::Value)) -> bool {
-    get_numbers(vs.0, vs.1, |a, b| a <= b)
-}
-
-fn values_i(
-    v1: Ident,
-    v2: Value,
-    jj: &serde_json::Value,
-) -> (serde_json::Value, serde_json::Value) {
-    let a = jj.get(v1).unwrap().clone();
-    let b = serde_value_from_sql_value(v2).unwrap();
-    
-    (a, b)
-}
-
-fn serde_value_from_sql_value(v: Value) -> Option<serde_json::Value> {
-    match v {
-        Value::Number(n) => serde_json::Value::from_str(n.as_str())
-            .map_err(|err| println!("error trying to get value: {}", err))
-            .ok(),
-        Value::SingleQuotedString(s) => Some(serde_json::Value::from(s)),
-        _ => None,
-    }
-}
-
-fn values_i_i(
-    v1: Ident,
-    v2: Ident,
-    jj: &serde_json::Value,
-) -> (serde_json::Value, serde_json::Value) {
-    let vv1 = jj.get(v1).unwrap().clone();
-    let vv2 = jj.get(v2).unwrap().clone();
-    (vv1, vv2)
-}
-
-fn a_b_f<F, F2>(left: Box<Expr>, right: Box<Expr>, jj: &serde_json::Value, f: F, f2: F2) -> bool
-where
-    F: FnOnce(bool, bool) -> bool,
-    F2: FnOnce((serde_json::Value, serde_json::Value)) -> bool,
-{
-    match (*left, *right) {
-        (Expr::Identifier(v1), Expr::Value(v2)) => f2(values_i(v1, v2, &jj)),
-        (Expr::Value(v1), Expr::Identifier(v2)) => f2(values_i(v2, v1, &jj)),
-        (Expr::Identifier(v1), Expr::Identifier(v2)) => f2(values_i_i(v1, v2, &jj)),
-        (a, b) => f(solve_binary(a, jj), solve_binary(b, jj)),
-    }
-}
-
-fn solve_binary(expr: Expr, jj: &serde_json::Value) -> bool {
-    match expr {
-        Expr::BinaryOp { left, op, right } => match op {
-            BinaryOperator::Eq => a_b_f(left, right, jj, |a, b| a == b, op_equal),
-            BinaryOperator::And => a_b_f(left, right, jj, |a, b| a && b, op_equal),
-            BinaryOperator::Gt => a_b_f(left, right, jj, |a, _| a, op_gt),
-            BinaryOperator::GtEq => a_b_f(left, right, jj, |a, _| a, op_gte),
-            BinaryOperator::LtEq => a_b_f(left, right, jj, |_, b| b, op_lte),
-            BinaryOperator::Lt => a_b_f(left, right, jj, |_, b| b, op_lt),
-            BinaryOperator::Or => a_b_f(left, right, jj, |a, b| a || b, op_equal),
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
-fn main() {
-    use sqlparser::dialect::GenericDialect;
-    use sqlparser::parser::Parser;
-
-    let sql = r#"SELECT * FROM my_table WHERE age < 35 AND name = 'mario'"#;
-
-    let j = r#"{"name": "mario", "surname": "castro", "age": 35, "weight": 80}"#;
-    let jj: serde_json::Value = serde_json::from_str(j).unwrap();
-
-    let dialect = GenericDialect {};
-
-    let ast = Parser::parse_sql(&dialect, sql.to_string()).unwrap();
-
-    for statement in ast {
-        if let Statement::Query(q) = statement {
-            match q.body {
-                SetExpr::Select(c) => {
-                    let res = solve_binary(c.selection.unwrap(), &jj);
-                    println!("{}", res);
-
-                    let projection =
-                        c.projection
-                            .into_iter()
-                            .fold(Some(Vec::new()), |acc, v| match acc {
-                                Some(mut items) => match v {
-                                    SelectItem::Wildcard => None,
-                                    SelectItem::UnnamedExpr(e) => {
-                                        items.push(format!("{}", e));
-                                        Some(items)
-                                    }
-                                    _ => None,
-                                },
-                                None => None,
-                            });
-
-                    let res = match projection {
-                        None => serde_json::to_string_pretty(&jj).unwrap(),
-                        Some(fields) => {
-                            let value = serde_json::Value::from_str("{}").unwrap();
-                            let folded = fields.into_iter().fold(value, |mut acc, x| {
-                                let a = jj.get(&x).unwrap();
-                                acc[&x] = a.clone();
-                                acc
-                            });
-                            serde_json::to_string_pretty(&folded).unwrap()
+    pub fn get_from(ast: &Vec<Statement>) -> Option<String> {
+        let st = ast.first()?;
+        if let Statement::Query(q_st) = st {
+            if let SetExpr::Select(s) = &q_st.body {
+                if let Some(b) = s.from.first() {
+                    return match &b.relation {
+                        TableFactor::Table { name, alias: _, args: _, with_hints: _ } => {
+                            Some(name.0.join(""))
                         }
+                        _ => None
                     };
-
-                    println!("{}", res);
                 }
-                SetExpr::Query(q) => println!("query: {}", q),
-                _ => println!("Some set expr"),
             }
+        };
+        return None;
+    }
+}
+
+
+pub fn solve_where(expr: Expr, jj: &sValue) -> bool {
+    match expr {
+        Expr::BinaryOp { left, op, right } => expr::binary_operation(left, op, right, jj),
+        _ => false,
+    }
+}
+
+struct SerdeValueWrapper {
+    inner: sValue,
+}
+
+impl PartialOrd for SerdeValueWrapper {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.inner.as_f64().and_then(|n1| other.inner.as_f64().and_then(|n2| {
+            n1.partial_cmp(&n2)
+        }))
+    }
+}
+
+impl PartialEq for SerdeValueWrapper {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.inner != other.inner
+    }
+}
+
+impl SerdeValueWrapper {
+    fn and(&self, other: &Self) -> bool {
+        !self.inner.is_null() & !other.inner.is_null()
+    }
+
+    fn or(&self, other: &Self) -> bool {
+        !self.inner.is_null() | !other.inner.is_null()
+    }
+}
+
+trait AsValue {
+    fn serde(self, jj: &sValue) -> Either<SerdeValueWrapper, bool>;
+}
+
+impl AsValue for Expr {
+    fn serde(self, jj: &sValue) -> Either<SerdeValueWrapper, bool> {
+        Left(SerdeValueWrapper {
+            inner: match self {
+                Expr::Identifier(i) => json_nested_value(i.as_ref(), jj).clone(),
+                Expr::CompoundIdentifier(c) => json_nested_value(&c.join("."), jj).clone(),
+                Expr::Value(v) => match v {
+                    sqlparser::ast::Value::Number(n) => sValue::from_str(n.as_str()).ok().unwrap_or_else(|| sValue::Null),
+                    sqlparser::ast::Value::SingleQuotedString(s) => serde_json::Value::from(s.as_str()),
+                    _ => sValue::Null,
+                },
+                unknown => return Right(solve_where(unknown, jj)),
+            }
+        })
+    }
+}
+
+
+mod expr {
+    use futures::future::Either;
+    use serde_json::Value as sValue;
+    use sqlparser::ast::{BinaryOperator, Expr};
+    use crate::components::sql::AsValue;
+
+    pub fn binary_operation(left: Box<Expr>, op: BinaryOperator, right: Box<Expr>, jj: &sValue) -> bool {
+        let l = left.serde(jj);
+        let r = right.serde(jj);
+
+        //This duplication of code avoids boxing
+        match (l, r) {
+            (Either::Left(v1), Either::Left(v2)) => {
+                match op {
+                    BinaryOperator::Eq => v1 == v2,
+                    BinaryOperator::NotEq => v1 != v2,
+                    BinaryOperator::Gt => v1 > v2,
+                    BinaryOperator::GtEq => v1 >= v2,
+                    BinaryOperator::LtEq => v1 <= v2,
+                    BinaryOperator::Lt => v1 < v2,
+                    BinaryOperator::And => v1.and(&v2),
+                    BinaryOperator::Or => v1.or(&v2),
+                    // BinaryOperator::Divide => solve_binary(left, right, jj, | a,b | a / b, op::divide),
+                    _ => return false,
+                }
+            }
+            (Either::Right(e1), Either::Right(e2)) =>
+                match op {
+                    BinaryOperator::Eq => e1 == e2,
+                    BinaryOperator::NotEq => e1 != e2,
+                    BinaryOperator::And => e1 && e2,
+                    BinaryOperator::Gt => e1.gt(&e2),
+                    BinaryOperator::GtEq => e1.ge(&e2),
+                    BinaryOperator::LtEq => e1.le(&e2),
+                    BinaryOperator::Lt => e1.lt(&e2),
+                    BinaryOperator::Or => e1 || e2,
+                    // BinaryOperator::Divide => solve_binary(left, right, jj, | a,b | a / b, op::divide),
+                    _ => return false,
+                }
+            _ => return false,
         }
     }
+}
+
+pub fn solve_projection(projection: Vec<SelectItem>, jj: sValue) -> sValue {
+    let mut out = sValue::from_str("{}").unwrap();
+
+    for v in projection {
+        match v {
+            SelectItem::Wildcard => {
+                println!("Wildcard");
+                return jj;
+            }
+            SelectItem::UnnamedExpr(e) => {
+                match e {
+                    Expr::Function(f) => println!("Function {:?}", f),
+                    Expr::Identifier(i) => {
+                        let a = jj.get(&i).unwrap();
+                        out[i] = a.clone();
+                    }
+                    Expr::Value(v) => println!("Value {:?}", v),
+                    _ => (),
+                }
+            }
+            _ => (),
+        }
+    }
+
+    out
+}
+
+
+pub fn json_nested_value<'a>(k: &str, v: &'a sValue) -> &'a sValue {
+    k.replace("\"", "").split('.').fold(v, move |acc, x| &acc[x])
 }
