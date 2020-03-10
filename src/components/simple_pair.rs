@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
+#[derive(Debug)]
 pub struct SimplePair {
     pub id: Vec<u8>,
     pub value: Vec<u8>,

@@ -37,6 +37,31 @@
             "presentation": {
                 "clear": true
             }
+        },
+        {
+            "type": "shell",
+            "command":"cargo",
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "label": "cargo test",
+            "presentation": {
+                "clear": true
+            },
+            "args": [
+                "test",
+                "--",
+                "--nocapture"
+            ],
+            "detail": "no capture"
+        },
+        {
+            "type": "cargo",
+            "subcommand": "build",
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
         }
     ]
 }

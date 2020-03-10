@@ -8,7 +8,7 @@ use sqlparser::ast::{Expr, SelectItem};
 pub mod utils {
     use sqlparser::ast::{SetExpr, Statement, TableFactor};
 
-    pub fn get_from(ast: &Vec<Statement>) -> Option<String> {
+    pub fn get_from(ast: &[Statement]) -> Option<String> {
         let st = ast.first()?;
         if let Statement::Query(q_st) = st {
             if let SetExpr::Select(s) = &q_st.body {
@@ -22,7 +22,7 @@ pub mod utils {
                 }
             }
         };
-        return None;
+        None
     }
 }
 
@@ -30,10 +30,13 @@ pub mod utils {
 pub fn solve_where(expr: &Expr, jj: &sValue) -> bool {
     match expr {
         Expr::BinaryOp { left, op, right } => expr::binary_operation(left, op, right, jj),
-        _ => false,
+        e => {
+            println!("expression in where not recognized: {:?}", e);
+            false
+        },
     }
 }
-
+#[derive(Debug)]
 struct SerdeValueWrapper {
     inner: sValue,
 }
@@ -50,11 +53,8 @@ impl PartialEq for SerdeValueWrapper {
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.inner != other.inner
-    }
 }
+
 
 impl SerdeValueWrapper {
     fn and(&self, other: &Self) -> bool {
@@ -64,6 +64,19 @@ impl SerdeValueWrapper {
     fn or(&self, other: &Self) -> bool {
         !self.inner.is_null() | !other.inner.is_null()
     }
+}
+
+pub fn check_limit_or_offset(e: &Option<Expr>)->Option<usize>{
+    e.as_ref().map(|f| {
+        match f {
+            Expr::Value(n) => match n {
+                sqlparser::ast::Value::Number(n) => n.parse::<usize>()
+                .ok(),
+                _ => None,
+            },
+            _ => None,
+        }
+    }).flatten()
 }
 
 trait AsValue {
@@ -81,6 +94,7 @@ impl AsValue for Expr {
                     sqlparser::ast::Value::SingleQuotedString(s) => serde_json::Value::from(s.as_str()),
                     _ => sValue::Null,
                 },
+                Expr::Nested(e) => return Right(solve_where(e, jj)),
                 unknown => return Right(solve_where(unknown, jj)),
             }
         })
@@ -95,7 +109,7 @@ mod expr {
 
     use crate::components::sql::AsValue;
 
-    pub fn binary_operation(left: &Box<Expr>, op: &BinaryOperator, right: &Box<Expr>, jj: &sValue) -> bool {
+    pub fn binary_operation(left: &Expr, op: &BinaryOperator, right: &Expr, jj: &sValue) -> bool {
         let l = left.serde(jj);
         let r = right.serde(jj);
 
@@ -133,7 +147,7 @@ mod expr {
     }
 }
 
-pub fn solve_projection(projection: &Vec<SelectItem>, jj: sValue) -> Option<sValue> {
+pub fn solve_projection(projection: &[SelectItem], jj: sValue) -> Option<sValue> {
     let mut out = sValue::from_str("{}").unwrap();
 
     for v in projection {
@@ -147,7 +161,7 @@ pub fn solve_projection(projection: &Vec<SelectItem>, jj: sValue) -> Option<sVal
                         out[i] = a.clone();
                     }
                     Expr::Value(v) => println!("Value {:?}", v),
-                    _ => (),
+                    e => println!("Expression not recognized: {:?}",e),
                 }
             }
             _ => (),
