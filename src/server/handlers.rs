@@ -106,7 +106,7 @@ pub async fn since(query: Option<Query>, id: Option<&str>, cf_name: &str)
     get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn put<'a>(cf: &str, query: &'a Option<Query>, path_id: Option<&str>, req: Body)
+pub async fn put(cf: &str, query: &Option<Query>, path_id: Option<&str>, req: Body)
                      -> Result<Response<Body>, Error> {
     let value = hyper::body::to_bytes(req)
         .await
@@ -132,7 +132,7 @@ pub async fn sql(query: Option<Query>, req: Body) -> Result<Response<Body>, Erro
     let ast = Parser::parse_sql(&dialect, sql.to_string())
         .map_err(Error::SqlError)?;
 
-    let from = sql::utils::get_from(&ast).ok_or(Error::CFNotFound("".to_string()))?;
+    let from = sql::utils::get_from(&ast).ok_or_else(|| Error::CFNotFound("".to_string()))?;
 
     let iter = rocks::range_all(&None, None, from.as_str())?;
 
@@ -192,12 +192,12 @@ fn after_read_actions(iter: SledgeIterator, query: &Option<Query>) -> Result<Sle
 fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
     if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
         let res = rocks::get("_channel", &channel_id)?.next()
-            .ok_or(Error::ChannelNotFound(channel_id.to_string()))?;
+            .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
         let c = Channel::new_vec(res.value)?;
         return Ok(Some(c));
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>)
@@ -206,7 +206,7 @@ fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>)
         if let (Some(id), Some(req)) = (q.field_path.as_ref(), req) {
             let j: Value = serde_json::from_slice(req.as_ref()).map_err(Error::SerdeError)?;
             let val: &Value = json_nested_value(id, &j);
-            return Ok(val.as_str().ok_or(Error::IdNotFoundInJSON(id.clone()))?.to_string());
+            return Ok(val.as_str().ok_or_else(|| Error::IdNotFoundInJSON(id.clone()))?.to_string());
         }
     }
 

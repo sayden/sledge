@@ -22,7 +22,7 @@ impl Mutator for UpperLowercase {
 
         let result = match value {
             Value::Array(ar) => {
-                let new_value = ar.into_iter()
+                let new_value = ar.iter()
                     .filter_map(|x| {
                         match x {
                             Value::String(s) => Some(s.to_lowercase()),

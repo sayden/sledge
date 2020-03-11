@@ -126,7 +126,7 @@ mod expr {
                     BinaryOperator::And => v1.and(&v2),
                     BinaryOperator::Or => v1.or(&v2),
                     // BinaryOperator::Divide => solve_binary(left, right, jj, | a,b | a / b, op::divide),
-                    _ => return false,
+                    _ => false,
                 }
             }
             (Either::Right(e1), Either::Right(e2)) =>
@@ -140,9 +140,9 @@ mod expr {
                     BinaryOperator::Lt => e1.lt(&e2),
                     BinaryOperator::Or => e1 || e2,
                     // BinaryOperator::Divide => solve_binary(left, right, jj, | a,b | a / b, op::divide),
-                    _ => return false,
+                    _ => false,
                 }
-            _ => return false,
+            _ => false,
         }
     }
 }

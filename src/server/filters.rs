@@ -3,8 +3,8 @@ use sqlparser::ast::{SetExpr, Statement};
 
 use crate::components::iterator::SledgeIterator;
 use crate::components::simple_pair::SimplePair;
-use crate::components::sql::{solve_projection, solve_where};
 use crate::components::sql::check_limit_or_offset;
+use crate::components::sql::{solve_projection, solve_where};
 use crate::server::handlers::json_nested_value;
 use crate::server::query::Query;
 
@@ -70,9 +70,11 @@ impl Filters {
             if res.len() != 2 {
                 log::warn!("no 'field equals' iterator could be created")
             } else {
-                let a = res.get(0).unwrap();
-                let b = res.get(1).unwrap();
-                itermods.push(Filter::FieldEquals(a.to_string(), b.to_string()))
+                let a = res.get(0);
+                let b = res.get(1);
+                if let (Some(a), Some(b)) = (a, b){
+                    itermods.push(Filter::FieldEquals((*a).to_string(), (*b).to_string()))
+                }
             }
         }
 
@@ -163,7 +165,6 @@ mod tests {
     use crate::components::simple_pair::SimplePair;
     use crate::server::filters::*;
     extern crate chrono;
-    use chrono::{DateTime, Utc};
 
     #[test]
     fn test_sql() {
@@ -176,7 +177,7 @@ mod tests {
         ];
 
         let dialect = GenericDialect {};
-        let ast = Parser::parse_sql(&dialect, sql_query.to_string()).unwrap();
+        let ast = Parser::parse_sql(&dialect, sql_query).unwrap();
 
         let mut f = Filters::new_sql(ast);
 

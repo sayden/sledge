@@ -31,8 +31,8 @@ impl Mutator for Sort {
         };
 
         if is_string {
-            let mut result = array.into_iter()
-                .filter_map(|x: &Value| match x {
+            let mut result = array.iter()
+                .filter_map(|x| match x {
                     Value::String(s) => Some(s),
                     _ => None,
                 }).collect::<Vec<&String>>();
@@ -46,8 +46,8 @@ impl Mutator for Sort {
             let final_result = result.into_iter().map(move |x| Value::from(x.as_str())).collect::<Vec<Value>>();
             v[self.modifier.field.as_str()] = Value::from(final_result);
         } else {
-            let mut result = array.into_iter()
-                .filter_map(|x: &Value| match x {
+            let mut result = array.iter()
+                .filter_map(|x| match x {
                     Value::Number(n) => Some(n.as_i64().unwrap()),
                     _ => None
                 }).collect::<Vec<i64>>();

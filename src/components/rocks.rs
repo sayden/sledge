@@ -13,9 +13,7 @@ use crate::server::query::Query;
 lazy_static! {
     static ref DB: rocksdb::DB = {
         let maybe_path = env::var("FEEDB_PATH").unwrap_or_else(|_| "/tmp/storage".to_string());
-        let db = new_storage(maybe_path);
-
-        db
+        new_storage(maybe_path)
     };
 }
 
@@ -45,7 +43,7 @@ pub fn range_all_reverse(cf_name: &str) -> Result<SledgeIterator, Error> {
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
     let source_iter: DBIterator = DB.iterator_cf(cf, IteratorMode::End).map_err(Error::RocksDB)?;
-    let sledge_iter: SledgeIterator = box source_iter.map(|i| SimplePair::new_boxed(i));
+    let sledge_iter: SledgeIterator = box source_iter.map(SimplePair::new_boxed);
 
     Ok(sledge_iter)
 }
@@ -63,12 +61,12 @@ pub fn range(
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
     let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
-    let sledge_iter: SledgeIterator = box source_iter.map(|i| SimplePair::new_boxed(i));
+    let sledge_iter: SledgeIterator = box source_iter.map(SimplePair::new_boxed);
 
     Ok(sledge_iter)
 }
 
-pub fn range_prefix<'a>(id: &str, cf_name: &str) -> Result<SledgeIterator, Error> {
+pub fn range_prefix(id: &str, cf_name: &str) -> Result<SledgeIterator, Error> {
     let cf = DB
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
@@ -95,7 +93,7 @@ pub fn get<'a>(db: &'a str, id: &'a str) -> Result<SledgeIterator, Error> {
     Ok(res)
 }
 
-pub fn put<'a>(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
+pub fn put(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
     let cf = DB
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;

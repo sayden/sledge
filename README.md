@@ -13,7 +13,7 @@
 * [*] Limit docs
 * [*] Infinite until finding key
 * [*] Only field matching key in json
-* [ ] Infinite until finding key in json
+* [*] Infinite until finding key in json
 * [*] Skip N first records
 * [*] Mutate results by specifying an already stored mutator channel id
 * [ ] Read to output

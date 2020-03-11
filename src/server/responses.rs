@@ -10,14 +10,14 @@ use crate::server::handlers::{BytesResultIterator, BytesResultStream};
 use crate::server::query::Query;
 use crate::server::reply::Reply;
 
-pub fn new_read_ok<'a>(res: &[u8]) -> Result<Response<Body>, Error> {
+pub fn new_read_ok(res: &[u8]) -> Result<Response<Body>, Error> {
     let data: Box<Value> = box serde_json::from_slice(res)
         .map_err(Error::SerdeError)?;
     let reply = Reply::ok(Some(data));
     Ok(reply.into())
 }
 
-pub fn new_read_ok_iter<'a>(iter: SledgeIterator) -> Result<Response<Body>, Error> {
+pub fn new_read_ok_iter(iter: SledgeIterator) -> Result<Response<Body>, Error> {
     let data = box serde_json::to_value(iter
         .flat_map(|x| simple_pair_to_json(x, true))
         .collect::<Vec<Value>>())
