@@ -1,10 +1,10 @@
-use crate::components::sql::check_limit_or_offset;
 use serde_json::Value;
 use sqlparser::ast::{SetExpr, Statement};
 
 use crate::components::iterator::SledgeIterator;
 use crate::components::simple_pair::SimplePair;
 use crate::components::sql::{solve_projection, solve_where};
+use crate::components::sql::check_limit_or_offset;
 use crate::server::handlers::json_nested_value;
 use crate::server::query::Query;
 
@@ -36,15 +36,15 @@ impl Filters {
 
         let mut itermods: Vec<Filter> = Vec::new();
 
-        if let Some(limit) = check_limit_or_offset(&query.limit) {
-            itermods.push(Filter::Limit(limit));
-        }
+        itermods.push(Filter::Sql(query.clone()));
 
         if let Some(offset) = check_limit_or_offset(&query.offset) {
             itermods.push(Filter::Skip(offset));
         }
 
-        itermods.push(Filter::Sql(query.clone()));
+        if let Some(limit) = check_limit_or_offset(&query.limit) {
+            itermods.push(Filter::Limit(limit));
+        }
 
         Filters {
             inner: Some(itermods),
@@ -126,13 +126,11 @@ impl Filters {
                     })
                     .ok()?;
 
+                // If no selection is found, this is probably a "SELECT * FROM [table]" query.
                 if let Some(selection) = &c.selection {
                     if !solve_where(selection, &jj) {
                         return None;
                     }
-                } else {
-                    log::warn!("no selection found on sql");
-                    return None;
                 }
 
                 let p = if let Some(temp) = solve_projection(&c.projection, jj) {
@@ -159,9 +157,13 @@ impl Filters {
 
 #[cfg(test)]
 mod tests {
-    use crate::server::filters::*;
-    use sqlparser::dialect::{GenericDialect};
+    use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
+
+    use crate::components::simple_pair::SimplePair;
+    use crate::server::filters::*;
+    extern crate chrono;
+    use chrono::{DateTime, Utc};
 
     #[test]
     fn test_sql() {

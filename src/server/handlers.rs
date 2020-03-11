@@ -17,6 +17,7 @@ use crate::server::filters::Filters;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
 use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_iter};
+use chrono::Utc;
 
 pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
@@ -212,6 +213,7 @@ fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>)
     let id = path_id.ok_or(Error::NoIdFoundOnRequest)?;
     match id {
         "_auto" => Ok(Uuid::new_v4().to_string()),
+        "_auto_time" => Ok(Utc::now().to_rfc3339()),
         _ => Ok(id.to_string()),
     }
 }

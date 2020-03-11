@@ -21,12 +21,12 @@
     * [*] Simple `SELECT [field]` and `SELECT *`
     * [*] Projections over fields (no functions)
     * [*] WHERE binary clauses for direct fields like `SELECT * FROM db WHERE age > 30 and name = 'mario'`
-    * [*] WHERe binary compound clauses like `(a OR b) AND c`
+    * [*] WHERE binary compound clauses like `(a OR b) AND c`
     * [*] LIMIT expression
     * [ ] SKIP like expression (FETCH? OFFSET?)
 
 ## Write queries
-* [ ] Write single doc `/_db/{db}/[{id} / _auto /][?field_path]`
+* [*] Write single doc
 * [ ] Write batch of docs separated by newline
 
 ### Options
@@ -46,6 +46,8 @@
 * [ ] Secondary indices
 * [ ] Outputs
   * [ ] HTTP
+  * [ ] Kafka
+  * [ ] NATS
 * [ ] Inputs
   * [ ] Kafka
   * [ ] NATS

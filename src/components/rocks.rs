@@ -99,7 +99,11 @@ pub fn put<'a>(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
     let cf = DB
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
+    // let dB_: rocksdb::DB;
+    let mut res: rocksdb::FlushOptions = rocksdb::FlushOptions::default();
+    res.set_wait(true);
     DB.put_cf(cf, k, v)
+        .and(DB.flush_opt(&res))
         .or_else(|err| Err(Error::Put(err.to_string())))
 }
 
