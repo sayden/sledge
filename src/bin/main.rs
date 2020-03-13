@@ -6,8 +6,8 @@ use std::task::{Context, Poll};
 
 use futures_util::future;
 use http::{Method, Uri};
+use hyper::service::{make_service_fn, service_fn, Service};
 use hyper::{Body, Request, Response, Server};
-use hyper::service::{make_service_fn, Service, service_fn};
 
 use sledge::components::errors::Error;
 use sledge::server::handlers;
@@ -43,8 +43,12 @@ impl Service<Request<Body>> for Svc {
 struct SPath<'a> {
     route: Option<&'a str>,
     cf: Option<&'a str>,
+    
     id_or_action: Option<&'a str>,
     param1: Option<&'a str>,
+
+    id_or_action2: Option<&'a str>,
+    param2: Option<&'a str>,
 }
 
 struct ReadRequest<'a> {
@@ -84,6 +88,8 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
         cf: path.get(1).cloned(),
         id_or_action: path.get(2).cloned(),
         param1: path.get(3).cloned(),
+        id_or_action2: path.get(4).cloned(),
+        param2: path.get(5).cloned(),
     };
 
     let res: Result<Response<Body>, Error> = match parts.method {
@@ -102,13 +108,9 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 async fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     match (req.path.route, req.path.cf, req.path.id_or_action) {
         (Some("_sql"), _, _) => handlers::sql(req.query, req.body).await,
-        (Some("_db"), Some(cf_name), Some(id)) => {
-            match id {
-                id => handlers::get(cf_name, id, req.query)
-                    .and_then(Ok)
-                    .or_else(|err| Ok(err.into())),
-            }
-        }
+        (Some("_db"), Some(cf_name), Some(id)) => handlers::get(cf_name, id, req.query)
+            .and_then(Ok)
+            .or_else(|err| Ok(err.into())),
         _ => Err(Error::WrongQuery),
     }
 }
@@ -134,23 +136,53 @@ async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
 }
 
 async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
-    match (req.path.route, req.path.cf, req.path.id_or_action, req.path.param1) {
-        (Some("_db"), Some("_all"), _, _) => handlers::get_all_dbs(),
-        (Some("_db"), Some(cf_name), Some("_since"), Some(id)) => {
+    match (
+        req.path.route,
+        req.path.cf,
+        req.path.id_or_action,
+        req.path.param1,
+        req.path.id_or_action2,
+        req.path.param2,
+    ) {
+        (Some("_db"), Some("_all"), _, _, _, _) => handlers::get_all_dbs(),
+        (
+            Some("_db"),
+            Some(cf_name),
+            Some("_since"),
+            Some(id),
+            Some("_topic"),
+            Some(topic_name),
+        ) => {
             if id.ends_with('*') {
-                handlers::since_prefix(req.query, id.trim_end_matches('*'), cf_name).await
+                handlers::since_prefix_to_topic(
+                    req.query,
+                    id.trim_end_matches('*'),
+                    cf_name,
+                    topic_name,
+                )
+                .await
+                .and_then(Ok)
+                .or_else(|err| Ok(err.into()))
+            } else {
+                handlers::since_to_topic(req.query, req.path.param1, cf_name, topic_name).await
+            }
+        },
+        (Some("_db"), Some(cf_name), Some("_since"), Some(id), _, _) => {
+            if id.ends_with('*') {
+                handlers::since_prefix(req.query, id.trim_end_matches('*'), cf_name)
+                    .await
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into()))
             } else {
                 handlers::since(req.query, req.path.param1, cf_name).await
             }
-        }
-        (Some("_db"), Some(cf_name), Some(id), _) => match id {
+        },
+        (Some("_db"), Some(cf_name), Some(id), _, _, _) => match id {
             "_all" => handlers::all(req.query, cf_name).await,
             "_all_reverse" => handlers::all_reverse(req.query, cf_name).await,
             id => handlers::get(cf_name, id, req.query)
                 .and_then(Ok)
-                .or_else(|err| Ok(err.into()))
+                .or_else(|err| Ok(err.into())),
         },
         _ => Err(Error::WrongQuery),
     }

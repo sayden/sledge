@@ -54,3 +54,4 @@
 * [ ] Script mutator
 * [ ] DB Statistics
 * [ ] Keep alive for range queries
+* [ ] Tail -f queries

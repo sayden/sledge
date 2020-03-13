@@ -12,7 +12,7 @@
             "options": {
                 "env": {
                     "RUST_LOG": "debug",
-                    "FEEDB_PATH": "/home/mcastro/projects/sledge/storage"
+                    "FEEDB_PATH": "/home/caster/projects/sledge/storage"
                 }
             },
             "presentation": {
@@ -40,7 +40,7 @@
         },
         {
             "type": "shell",
-            "command":"cargo",
+            "command": "cargo",
             "problemMatcher": [
                 "$rustc"
             ],

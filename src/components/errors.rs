@@ -9,7 +9,7 @@ use crate::server::responses::unknown_error;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("error parsing HTTP body: {0}")]
-    BodyParsingError(#[from]hyper::Error),
+    BodyParsingError(#[from] hyper::Error),
 
     #[error("id with key '{0}' was not found in the incoming json")]
     IdNotFoundInJSON(String),
@@ -25,6 +25,9 @@ pub enum Error {
 
     #[error("rocksdb error: {0}")]
     RocksDB(#[from] rocksdb::Error),
+
+    #[error("kafka error: {0}")]
+    KafkaError(#[from] rdkafka::error::KafkaError),
 
     #[error("value not found: {0}")]
     ValueNotFound(String),
@@ -78,7 +81,7 @@ pub enum Error {
     MethodNotFound,
 
     #[error("error generating response: {0}")]
-    GeneratingResponse(#[from]http::Error),
+    GeneratingResponse(#[from] http::Error),
 
     #[error("error parsing sql: {0}")]
     SqlError(#[from] sqlparser::parser::ParserError),
@@ -92,10 +95,7 @@ impl From<Error> for Response<Body> {
         };
 
         let res = http::Response::builder()
-            .header(
-                "Content-Type",
-                "application/json",
-            )
+            .header("Content-Type", "application/json")
             .body(Body::from(string));
 
         match res {

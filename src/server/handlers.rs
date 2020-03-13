@@ -1,3 +1,4 @@
+use crate::server::responses::get_iterating_response_with_topic;
 use bytes::Bytes;
 use futures::Stream;
 use http::Response;
@@ -10,7 +11,7 @@ use uuid::Uuid;
 
 use crate::channels::channel::Channel;
 use crate::components::errors::Error;
-use crate::components::iterator::{SledgeIterator, with_channel, with_channel_for_single_value};
+use crate::components::iterator::{with_channel, with_channel_for_single_value, SledgeIterator};
 use crate::components::rocks;
 use crate::components::sql;
 use crate::server::filters::Filters;
@@ -20,9 +21,8 @@ use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_
 use chrono::Utc;
 
 pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
-pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
-pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
-
+pub type BytesResultStream = Box<dyn Stream<Item = BytesResult> + Send + Sync>;
+pub type BytesResultIterator = dyn Iterator<Item = BytesResult> + Send + Sync;
 
 // struct IndexedValue {
 //     key: String,
@@ -77,37 +77,67 @@ pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
 //         .into())
 // }
 
-pub async fn since_prefix(query: Option<Query>, id: &str, cf_name: &str)
-                          -> Result<Response<Body>, Error> {
+pub async fn since_prefix_to_topic(
+    query: Option<Query>,
+    id: &str,
+    cf_name: &str,
+    topic_name: &str,
+) -> Result<Response<Body>, Error> {
+    log::info!("since prefix topic {}", topic_name);
     let iter = rocks::range_prefix(id, cf_name)?;
 
+    get_iterating_response_with_topic(after_read_actions(iter, &query)?, query, topic_name).await
+}
+
+pub async fn since_prefix(
+    query: Option<Query>,
+    id: &str,
+    cf_name: &str,
+) -> Result<Response<Body>, Error> {
+    let iter = rocks::range_prefix(id, cf_name)?;
 
     get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn all(query: Option<Query>, cf_name: &str)
-                 -> Result<Response<Body>, Error> {
+pub async fn all(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
     let iter = rocks::range_all(&query, None, cf_name)?;
 
-    get_iterating_response(
-        after_read_actions(iter, &query)?, query)
+    get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn all_reverse(query: Option<Query>, cf_name: &str)
-                         -> Result<Response<Body>, Error> {
+pub async fn all_reverse(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
     let iter = rocks::range_all_reverse(cf_name)?;
     get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn since(query: Option<Query>, id: Option<&str>, cf_name: &str)
-                   -> Result<Response<Body>, Error> {
+pub async fn since(
+    query: Option<Query>,
+    id: Option<&str>,
+    cf_name: &str,
+) -> Result<Response<Body>, Error> {
     let id = get_id(&query, id, None)?;
     let iter = rocks::range(&query, id.as_ref(), cf_name)?;
     get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn put(cf: &str, query: &Option<Query>, path_id: Option<&str>, req: Body)
-                     -> Result<Response<Body>, Error> {
+pub async fn since_to_topic(
+    query: Option<Query>,
+    id: Option<&str>,
+    cf_name: &str,
+    topic_name: &str,
+) -> Result<Response<Body>, Error> {
+    eprintln!("topic_name = {:?}", topic_name);
+    let id = get_id(&query, id, None)?;
+    let iter = rocks::range(&query, id.as_ref(), cf_name)?;
+    get_iterating_response_with_topic(after_read_actions(iter, &query)?, query, topic_name).await
+}
+
+pub async fn put(
+    cf: &str,
+    query: &Option<Query>,
+    path_id: Option<&str>,
+    req: Body,
+) -> Result<Response<Body>, Error> {
     let value = hyper::body::to_bytes(req)
         .await
         .map_err(Error::BodyParsingError)?;
@@ -125,12 +155,11 @@ pub async fn sql(query: Option<Query>, req: Body) -> Result<Response<Body>, Erro
     let value = hyper::body::to_bytes(req)
         .await
         .map_err(Error::BodyParsingError)?;
-    let sql = std::str::from_utf8(value.as_ref())
-        .map_err(|err| Error::Utf8Error(err.to_string()))?;
+    let sql =
+        std::str::from_utf8(value.as_ref()).map_err(|err| Error::Utf8Error(err.to_string()))?;
 
     let dialect = GenericDialect {};
-    let ast = Parser::parse_sql(&dialect, sql.to_string())
-        .map_err(Error::SqlError)?;
+    let ast = Parser::parse_sql(&dialect, sql.to_string()).map_err(Error::SqlError)?;
 
     let from = sql::utils::get_from(&ast).ok_or_else(|| Error::CFNotFound("".to_string()))?;
 
@@ -163,9 +192,11 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
     new_read_ok(v.as_bytes())
 }
 
-
-fn after_read_sql_actions(iter: SledgeIterator, query: &Option<Query>, ast: Vec<Statement>)
-                          -> Result<SledgeIterator, Error> {
+fn after_read_sql_actions(
+    iter: SledgeIterator,
+    query: &Option<Query>,
+    ast: Vec<Statement>,
+) -> Result<SledgeIterator, Error> {
     let ch = get_channel(&query)?;
     let iter = with_channel(iter, ch, &query);
 
@@ -174,13 +205,14 @@ fn after_read_sql_actions(iter: SledgeIterator, query: &Option<Query>, ast: Vec<
     Ok(mods)
 }
 
-
-fn after_read_actions(iter: SledgeIterator, query: &Option<Query>) -> Result<SledgeIterator, Error> {
+fn after_read_actions(
+    iter: SledgeIterator,
+    query: &Option<Query>,
+) -> Result<SledgeIterator, Error> {
     let ch = get_channel(&query)?;
     let iter = with_channel(iter, ch, &query);
 
-    let mods = query.as_ref()
-        .map(|q| Filters::new(q));
+    let mods = query.as_ref().map(|q| Filters::new(q));
     let iter2 = match mods {
         Some(mut mods) => mods.apply(iter),
         None => iter,
@@ -191,7 +223,8 @@ fn after_read_actions(iter: SledgeIterator, query: &Option<Query>) -> Result<Sle
 
 fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
     if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
-        let res = rocks::get("_channel", &channel_id)?.next()
+        let res = rocks::get("_channel", &channel_id)?
+            .next()
             .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
         let c = Channel::new_vec(res.value)?;
         return Ok(Some(c));
@@ -200,13 +233,19 @@ fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
     Ok(None)
 }
 
-fn get_id(query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>)
-          -> Result<String, Error> {
+fn get_id(
+    query: &Option<Query>,
+    path_id: Option<&str>,
+    req: Option<&Bytes>,
+) -> Result<String, Error> {
     if let Some(q) = query {
         if let (Some(id), Some(req)) = (q.field_path.as_ref(), req) {
             let j: Value = serde_json::from_slice(req.as_ref()).map_err(Error::SerdeError)?;
             let val: &Value = json_nested_value(id, &j);
-            return Ok(val.as_str().ok_or_else(|| Error::IdNotFoundInJSON(id.clone()))?.to_string());
+            return Ok(val
+                .as_str()
+                .ok_or_else(|| Error::IdNotFoundInJSON(id.clone()))?
+                .to_string());
         }
     }
 

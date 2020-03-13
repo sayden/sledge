@@ -14,6 +14,7 @@ pub struct Query {
     pub channel: Option<String>,
     pub include_ids: Option<bool>,
     pub omit_errors: Option<bool>,
+    pub broker: Option<String>,
 }
 
 impl Display for Query {

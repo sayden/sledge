@@ -1,3 +1,4 @@
+use crate::components::simple_pair::SimplePair;
 use bytes::Bytes;
 use hyper::Body;
 use hyper::Response;
@@ -5,37 +6,50 @@ use serde_json::Value;
 
 use crate::components::errors::Error;
 use crate::components::iterator::SledgeIterator;
-use crate::components::simple_pair::{simple_pair_to_json};
+use crate::components::simple_pair::simple_pair_to_json;
 use crate::server::handlers::{BytesResultIterator, BytesResultStream};
 use crate::server::query::Query;
 use crate::server::reply::Reply;
+use futures_util::future::FutureExt;
+use rdkafka::config::ClientConfig;
+use rdkafka::producer::{FutureProducer, FutureRecord};
 
 pub fn new_read_ok(res: &[u8]) -> Result<Response<Body>, Error> {
-    let data: Box<Value> = box serde_json::from_slice(res)
-        .map_err(Error::SerdeError)?;
+    let data: Box<Value> = box serde_json::from_slice(res).map_err(Error::SerdeError)?;
     let reply = Reply::ok(Some(data));
     Ok(reply.into())
 }
 
 pub fn new_read_ok_iter(iter: SledgeIterator) -> Result<Response<Body>, Error> {
-    let data = box serde_json::to_value(iter
-        .flat_map(|x| simple_pair_to_json(x, true))
-        .collect::<Vec<Value>>())
-        .map_err(Error::SerdeError)?;
+    let data = box serde_json::to_value(
+        iter.flat_map(|x| simple_pair_to_json(x, true))
+            .collect::<Vec<Value>>(),
+    )
+    .map_err(Error::SerdeError)?;
 
     let reply = Reply::ok(Some(data));
 
     Ok(reply.into())
 }
 
-pub fn get_iterating_response(iter: SledgeIterator, query: Option<Query>) -> Result<Response<Body>, Error> {
+pub fn get_iterating_response(
+    iter: SledgeIterator,
+    query: Option<Query>,
+) -> Result<Response<Body>, Error> {
     let include_id = query.and_then(|q| q.include_ids).unwrap_or_else(|| false);
 
     let thread_iter: Box<BytesResultIterator> = box iter
         .flat_map(move |x| simple_pair_to_json(x, include_id))
-        .flat_map(|spj| serde_json::to_string(&spj)
-            .map_err(|err| log::warn!("error trying to get json from simpleJSON: {}", err.to_string()))
-            .ok())
+        .flat_map(|spj| {
+            serde_json::to_string(&spj)
+                .map_err(|err| {
+                    log::warn!(
+                        "error trying to get json from simpleJSON: {}",
+                        err.to_string()
+                    )
+                })
+                .ok()
+        })
         .map(|s| format!("{}\n", s))
         .map(|x| Ok(Bytes::from(x)));
 
@@ -44,6 +58,41 @@ pub fn get_iterating_response(iter: SledgeIterator, query: Option<Query>) -> Res
     http::Response::builder()
         .header("Content-Type", "application/octet-stream")
         .body(Body::from(stream))
+        .map_err(Error::GeneratingResponse)
+}
+
+pub async fn get_iterating_response_with_topic(
+    iter: SledgeIterator,
+    query: Option<Query>,
+    topic_name: &str,
+) -> Result<Response<Body>, Error> {
+    let include_id = query.and_then(|q| q.include_ids).unwrap_or_else(|| false);
+
+    let producer: FutureProducer = ClientConfig::new()
+        .set("bootstrap.servers", "21a1beed3ac5:9092")
+        .set("message.timeout.ms", "5000")
+        .create()
+        .map_err(Error::KafkaError)?;
+
+    let thread_iter = iter
+        .map(|v: SimplePair| {
+            producer.send(
+                FutureRecord::to(topic_name)
+                    .payload(&String::from_utf8(v.value).unwrap())
+                    .key(&String::from_utf8(v.id).unwrap()),
+                0,
+            )
+        })
+        .map(move |delivery_status| delivery_status)
+        .collect::<Vec<_>>();
+
+    for future in thread_iter {
+        log::info!("Future completed. Result: {:?}", future.await);
+    }
+
+    http::Response::builder()
+        .header("Content-Type", "application/json")
+        .body(Body::from(r#"{"error":false}\n"#))
         .map_err(Error::GeneratingResponse)
 }
 
