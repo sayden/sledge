@@ -42,12 +42,13 @@ impl Channel {
 
     fn new(ms: ChannelToParseJSON) -> Result<Self, Error> {
         let mutators = ms.channel.into_iter()
-            .filter_map(|x| factory(x.clone())
-                .or_else(|| {
-                    log::error!("channel parsing error {}", x);
+            .filter_map(|x| match factory(x.clone()) {
+                Err(e) => {
+                    log::error!("channel parsing error {}. Error: {}", x, e.to_string());
                     None
-                })
-            )
+                }
+                Ok(v) => Some(v),
+            })
             .collect::<Vec<Box<dyn Mutator>>>();
 
         Ok(Channel { name: "".to_string(), channel: mutators })
@@ -92,7 +93,7 @@ fn parse_and_modify(mut p: Value, mods: &Channel, omit_errors: bool) -> Option<V
 
     for modifier in mods.iter() {
         match modifier.mutate(mutp.borrow_mut()) {
-            Some(err) => {
+            Err(err) => {
                 log::warn!("error trying to modify json '{}'", err);
                 if omit_errors {
                     return None;

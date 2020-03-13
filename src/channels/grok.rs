@@ -1,10 +1,10 @@
 use std::fmt;
-use std::fmt::Error;
 
 use grok::{Grok, Pattern};
 use serde::export::Formatter;
 use serde_json::{Map, Value};
 
+use crate::channels::error::Error;
 use crate::channels::mutators::*;
 use crate::channels::mutators::Mutator;
 
@@ -68,7 +68,7 @@ impl Grok_ {
         Some(serde_json::Value::Object(v))
     }
 
-    fn compile(pattern: String, custom_patterns: Option<Vec<(String, String)>>) -> Result<Pattern, anyhow::Error> {
+    fn compile(pattern: String, custom_patterns: Option<Vec<(String, String)>>) -> Result<Pattern, Error> {
         let mut grok = Grok::default();
 
         if custom_patterns.is_some() {
@@ -148,32 +148,25 @@ impl Grok_ {
         grok.insert_definition("COMBINEDAPACHELOG", r#"%{COMMONAPACHELOG} %{QS:referrer} %{QS:agent}"#);
         grok.insert_definition("LOGLEVEL", r#"([Aa]lert|ALERT|[Tt]race|TRACE|[Dd]ebug|DEBUG|[Nn]otice|NOTICE|[Ii]nfo|INFO|[Ww]arn?(?:ing)?|WARN?(?:ING)?|[Ee]rr?(?:or)?|ERR?(?:OR)?|[Cc]rit?(?:ical)?|CRIT?(?:ICAL)?|[Ff]atal|FATAL|[Ss]evere|SEVERE|EMERG(?:ENCY)?|[Ee]merg(?:ency)?)"#);
 
-        let pattern = match grok.compile(pattern.as_str(), false) {
-            Ok(p) => p,
-            Err(err) => return Err(anyhow!("error compiling grok '{}'", err.to_string())),
-        };
+        let pattern = grok.compile(pattern.as_str(), false)
+            .map_err(Error::GrokError)?;
 
         Ok(pattern)
     }
 }
 
 impl Mutator for Grok_ {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
-        let maybe_value = v.get(&self.modifier.field);
-        let value = match maybe_value {
-            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
-            Some(v) => v,
-        };
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
+        let value = v.get(&self.modifier.field)
+            .ok_or(Error::FieldNotFoundInJSON(self.modifier.field.clone()))?;
 
         let incoming_value = match value {
             Value::String(s) => s,
-            _ => return Some(anyhow!("grok uses a string value"))
+            _ => return Error::NotString(value.to_string()).into()
         };
 
-        let matches = match self.compiled_pattern.match_against(incoming_value.as_str()) {
-            Some(value) => value,
-            None => return Some(anyhow!("no matches")),
-        };
+        let matches = self.compiled_pattern.match_against(incoming_value.as_str())
+            .ok_or(Error::GrokNoMatches)?;
 
         let mut values: Vec<(String, Value)> = Vec::new();
 
@@ -189,20 +182,20 @@ impl Mutator for Grok_ {
             v.insert(x, y);
         }
 
-        None
-    }
-
-    fn as_grok(&self) -> Option<&Grok_> {
-        Some(self)
+        Ok(())
     }
 
     fn mutator_type(&self) -> MutatorType {
         MutatorType::Grok
     }
+
+    fn as_grok(&self) -> Option<&Grok_> {
+        Some(self)
+    }
 }
 
 impl fmt::Display for Grok_ {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Grok on field: '{}'", self.modifier.field)
     }
 }

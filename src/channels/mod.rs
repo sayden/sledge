@@ -14,3 +14,4 @@ pub mod sort;
 
 pub mod channel;
 mod test_parser;
+pub(crate) mod error;

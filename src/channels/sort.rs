@@ -1,9 +1,12 @@
-use crate::channels::mutators::Mutator;
-use crate::channels::mutators::*;
-
-use serde_json::{Map, Value};
 use std::fmt;
-use std::fmt::{Error, Formatter};
+use std::fmt::Formatter;
+
+use itertools::Itertools;
+use serde_json::{Map, Value};
+
+use crate::channels::error::Error;
+use crate::channels::mutators::*;
+use crate::channels::mutators::Mutator;
 
 #[derive(Debug)]
 pub struct Sort {
@@ -11,58 +14,60 @@ pub struct Sort {
     pub descending: bool,
 }
 
-impl Mutator for Sort {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
-        let maybe_value = v.get(&self.modifier.field);
+fn maybe_reverse<T: Into<Value> + Ord>(descending: bool, res: impl Iterator<Item=T> + DoubleEndedIterator) -> Vec<Value> {
+    if descending {
+        res
+            .sorted().rev().map(|x| x.into()).collect::<Vec<Value>>()
+    } else {
+        res
+            .sorted().map(|x| x.into()).collect::<Vec<Value>>()
+    }
+}
 
-        let value = match maybe_value {
-            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
-            Some(v) => v,
-        };
+impl Mutator for Sort {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
+        let value = v.get(&self.modifier.field)
+            .ok_or(Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
 
         let array = match value {
             Value::Array(ar) => ar,
-            _ => return Some(anyhow!("value '{}' is not an array", self.modifier.field))
+            _ => return Error::NotAnArray(self.modifier.field.to_string()).into()
         };
 
-        let is_string = match array.get(0) {
-            Some(v) => v.is_string(),
-            _ => false,
-        };
+        let first_item = array.get(0)
+            .ok_or(Error::EmptyArray(self.modifier.field.to_string()))?;
 
-        if is_string {
-            let mut result = array.iter()
-                .filter_map(|x| match x {
-                    Value::String(s) => Some(s),
-                    _ => None,
-                }).collect::<Vec<&String>>();
+        match first_item {
+            Value::String(_) => {
+                let res = array.iter()
+                    .filter_map(|x: &Value| match x {
+                        Value::String(s) => Some(s.clone()),
+                        _ => None,
+                    });
 
-            result.sort();
+                let res = maybe_reverse(self.descending, res);
+                v[self.modifier.field.as_str()] = Value::from(res);
+            },
+            Value::Number(_) => {
+                let res = array.iter()
+                    .filter_map(|x: &Value| match x {
+                        Value::Number(n) => {
+                            let maybe_i64 = n.as_i64();
+                            if maybe_i64.is_none() {
+                                log::error!("error trying to get an i64 value from json");
+                            }
+                            maybe_i64
+                        }
+                        _ => None
+                    });
 
-            if self.descending {
-                result.reverse();
+                let res = maybe_reverse(self.descending, res);
+                v[self.modifier.field.as_str()] = Value::from(res);
             }
-
-            let final_result = result.into_iter().map(move |x| Value::from(x.as_str())).collect::<Vec<Value>>();
-            v[self.modifier.field.as_str()] = Value::from(final_result);
-        } else {
-            let mut result = array.iter()
-                .filter_map(|x| match x {
-                    Value::Number(n) => Some(n.as_i64().unwrap()),
-                    _ => None
-                }).collect::<Vec<i64>>();
-
-            result.sort();
-
-            if self.descending {
-                result.reverse();
-            }
-
-            let final_result = result.into_iter().map(move |x| Value::from(x)).collect::<Vec<Value>>();
-            v[self.modifier.field.as_str()] = Value::from(final_result);
+            _ => return Error::SortNotPossibleError.into()
         }
 
-        None
+        Ok(())
     }
 
     fn mutator_type(&self) -> MutatorType {
@@ -71,7 +76,7 @@ impl Mutator for Sort {
 }
 
 impl fmt::Display for Sort {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Sort '{}' field: (descending='{}')", self.modifier.field, self.descending)
     }
 }

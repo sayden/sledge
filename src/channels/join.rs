@@ -1,10 +1,10 @@
 use std::fmt;
-use std::fmt::Error;
 
 use serde::{Deserialize, Serialize};
 use serde::export::Formatter;
 use serde_json::{Map, Value};
 
+use crate::channels::error::Error;
 use crate::channels::mutators::*;
 use crate::channels::mutators::Mutator;
 
@@ -16,19 +16,15 @@ pub struct Join {
 }
 
 impl Mutator for Join {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
         match &self.field {
             Value::String(s) => {
-                let maybe_field = v.get(s.as_str());
+                let value = v.get(s.as_str())
+                    .ok_or(Error::FieldNotFoundInJSON(self.field.to_string()))?;
 
-                let field = match maybe_field {
-                    None => return Some(anyhow!("value '{}' not found", self.field)),
-                    Some(v) => v,
-                };
-
-                let array = match field {
+                let array = match value {
                     Value::Array(ar) => ar,
-                    _ => return Some(anyhow!("value '{}' is not an array", self.field))
+                    _ => return Error::NotAnArray(self.field.to_string()).into()
                 };
 
                 let new_value = array.clone().into_iter()
@@ -43,36 +39,34 @@ impl Mutator for Join {
 
                 v[s.as_str()] = Value::from(new_value);
 
-                None
+                Ok(())
             }
             Value::Array(ar) => {
                 let mut out: Vec<String> = Vec::new();
+                let new_field = self.new_field.as_ref()
+                    .ok_or(Error::RequiredFieldNotFound("new_field".to_string()))?;
 
                 for value in ar {
                     let field_name = match value {
                         Value::String(s) => s,
-                        _ => return Some(anyhow!("value on array '{}' is not an string", value)),
+                        _ => return Error::ValueInArrayIsNotString(value.to_string()).into(),
                     };
 
-                    let maybe_field = match v.get(field_name.as_str()) {
-                        Some(f) => f,
-                        None => return Some(anyhow!("field '{}' is not a value", field_name)),
-                    };
+                    let field = v.get(field_name.as_str())
+                        .ok_or(Error::FieldNotFoundInJSON(field_name.to_string()))?;
 
-                    match maybe_field {
+                    match field {
                         Value::String(s) => out.push(s.clone()),
-                        _ => return Some(anyhow!("field '{}' is not an string", maybe_field)),
+                        _ => return Error::NotString(value.to_string()).into(),
                     };
                 }
 
                 let new_value = out.join(self.separator.as_str());
-                if let Some(f) = &self.new_field {
-                    v.insert(f.clone(), Value::from(new_value));
-                }
+                v.insert(new_field.clone(), Value::from(new_value));
 
-                None
+                Ok(())
             }
-            _ => None
+            _ => return Error::JoinErrorTypeNotRecognized.into()
         }
     }
 
@@ -82,7 +76,7 @@ impl Mutator for Join {
 }
 
 impl fmt::Display for Join {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Join field: '{}' using separator '{}'", self.field, self.separator)
     }
 }

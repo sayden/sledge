@@ -4,7 +4,7 @@ use crate::channels::mutators::*;
 use serde_json::{Map, Value};
 use std::fmt;
 use serde::export::Formatter;
-use std::fmt::Error;
+use crate::channels::error::Error;
 
 #[derive(Debug)]
 pub struct Append {
@@ -13,17 +13,15 @@ pub struct Append {
 }
 
 impl Mutator for Append {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
-        let maybe_field = v.get(&self.modifier.field);
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
+        let value = v.get(&self.modifier.field)
+            .ok_or(Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?
+            .as_str()
+            .ok_or(Error::NotString(self.modifier.field.to_string()))?;
 
-        let value = match maybe_field {
-            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
-            Some(v) => v,
-        };
-
-        let new_value = format!("{}{}", value.as_str()?, self.append);
-        v[&self.modifier.field] = Value::from(new_value);
-        None
+        let result = format!("{}{}", value, self.append);
+        v[&self.modifier.field] = Value::from(result);
+        Ok(())
     }
 
     fn mutator_type(&self) -> MutatorType {
@@ -32,7 +30,7 @@ impl Mutator for Append {
 }
 
 impl fmt::Display for Append {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Append '{}' to field: '{}'", self.append, self.modifier.field)
     }
 }

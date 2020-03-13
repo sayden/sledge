@@ -4,7 +4,7 @@ use crate::channels::mutators::*;
 use serde_json::{Map, Value};
 use std::fmt;
 use serde::export::Formatter;
-use std::fmt::Error;
+use crate::channels::error::Error;
 
 #[derive(Debug)]
 pub struct TrimSpaces {
@@ -12,22 +12,18 @@ pub struct TrimSpaces {
 }
 
 impl Mutator for TrimSpaces {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
-        let maybe_value = v.get(&self.modifier.field);
-
-        let value = match maybe_value {
-            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
-            Some(v) => v,
-        };
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
+        let value = v.get(&self.modifier.field)
+            .ok_or(Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
 
         let s: &String = match value {
             Value::String(x) => x,
-            _ => return Some(anyhow!("value '{}' is not an string", self.modifier.field))
+            _ => return Error::NotString(self.modifier.field.to_string()).into()
         };
 
         v[self.modifier.field.as_str()] = Value::from(s.trim());
 
-        None
+        Ok(())
     }
 
     fn mutator_type(&self) -> MutatorType {
@@ -36,7 +32,7 @@ impl Mutator for TrimSpaces {
 }
 
 impl fmt::Display for TrimSpaces {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "TrimSpaces to field '{}'", self.modifier.field)
     }
 }

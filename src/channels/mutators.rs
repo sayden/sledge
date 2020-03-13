@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
-use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::channels::append::Append;
+use crate::channels::error::Error;
 use crate::channels::grok::Grok_;
 use crate::channels::join::Join;
 use crate::channels::remove::Remove;
@@ -22,7 +22,7 @@ pub struct Mutation {
 }
 
 pub trait Mutator: Send + Sync {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<Error>;
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error>;
     fn mutator_type(&self) -> MutatorType;
     fn as_grok(&self) -> Option<&Grok_> { None }
 }
@@ -31,6 +31,7 @@ pub trait Mutator: Send + Sync {
 #[derive(Debug)]
 pub enum MutatorType {
     Append,
+    Grok,
     Join,
     Lowercase,
     Remove,
@@ -41,7 +42,6 @@ pub enum MutatorType {
     Trim,
     TrimSpace,
     Uppercase,
-    Grok,
 }
 
 impl FromStr for MutatorType {
@@ -85,73 +85,88 @@ impl ToString for MutatorType {
     }
 }
 
-pub fn factory(v: Value) -> Option<Box<dyn Mutator>> {
-    let type_: MutatorType = v["type"].as_str()?.parse().ok()?;
+pub fn factory(v: Value) -> Result<Box<dyn Mutator>, Error> {
+    let type_: MutatorType = v["type"].as_str()
+        .ok_or(Error::KeyNotFoundInMutator("type".to_string()))?
+        .parse()
+        .map_err(|_| Error::ParsingError("type".to_string()))?;
+
     if type_.to_string() == MutatorType::Join.to_string() {
-        return Some(Box::new(Join {
+        return Ok(box (Join {
             field: v["field"].clone(),
-            separator: v["separator"].as_str()?.to_string(),
+            separator: v["separator"].as_str()
+                .ok_or(Error::KeyNotFoundInMutator("separator".to_string()))?.to_string(),
             new_field: v["new_field"].as_str().map(|x| x.to_string()),
         }));
     }
 
-    let field = v["field"].as_str()?.to_string();
+    let field = v["field"].as_str()
+        .ok_or(Error::KeyNotFoundInMutator("field".to_string()))?
+        .to_string();
 
     match type_ {
         MutatorType::Remove =>
-            Some(Box::new(Remove {
+            Ok(box (Remove {
                 modifier: Mutation { field }
             })),
-        MutatorType::Append => Some(Box::new(Append {
+        MutatorType::Append => Ok(box (Append {
             modifier: Mutation { field },
-            append: v["append"].as_str()?.to_string(),
+            append: v["append"].as_str()
+                .ok_or(Error::NotString("append".to_string()))?.to_string(),
         })),
-        MutatorType::Rename => Some(Box::new(Rename {
+        MutatorType::Rename => Ok(box (Rename {
             modifier: Mutation { field },
-            rename: v["new_name"].as_str()?.to_string(),
+            rename: v["new_name"].as_str()
+                .ok_or(Error::NotString("new_name".to_string()))?.to_string(),
         })),
-        MutatorType::Lowercase => Some(Box::new(
+        MutatorType::Lowercase => Ok(box (
             UpperLowercase {
                 modifier: Mutation { field },
                 f: str::to_lowercase,
             })),
-        MutatorType::Uppercase => Some(Box::new(
+        MutatorType::Uppercase => Ok(box (
             UpperLowercase {
                 modifier: Mutation { field },
                 f: str::to_uppercase,
             })),
-        MutatorType::Split => Some(Box::new(
+        MutatorType::Split => Ok(box (
             Split {
                 modifier: Mutation { field },
-                separator: v["separator"].as_str()?.to_string(),
+                separator: v["separator"].as_str()
+                    .ok_or(Error::NotString("separator".to_string()))?.to_string(),
             })),
-        MutatorType::TrimSpace => Some(Box::new(
+        MutatorType::TrimSpace => Ok(box (
             TrimSpaces {
                 modifier: Mutation { field },
             })),
-        MutatorType::Trim => Some(Box::new(
+        MutatorType::Trim => Ok(box (
             Trim {
                 modifier: Mutation { field },
-                from: v["from"].as_str()?.to_string(),
-                total: v["total"].as_i64()? as usize,
+                from: v["from"].as_str()
+                    .ok_or(Error::NotString("from".to_string()))?.to_string(),
+                total: v["total"].as_i64()
+                    .ok_or(Error::NotI64("total".to_string()))? as usize,
             })),
         MutatorType::Set =>
-            Some(Box::new(
+            Ok(box (
                 Set {
                     modifier: Mutation { field },
                     value: v["value"].clone(),
                 })),
         MutatorType::Sort =>
-            Some(Box::new(
+            Ok(box (
                 Sort {
                     modifier: Mutation { field },
-                    descending: v["descending"].as_bool()?.clone(),
+                    descending: v["descending"].as_bool()
+                        .ok_or(Error::NotBool("descending".to_string()))?.clone(),
                 })),
         MutatorType::Grok =>
-            Some(Box::new(Grok_::new(
+            Ok(box (Grok_::new(
                 field,
-                v["pattern"].as_str()?.to_string(),
-                v["custom_patterns"].as_array())?)),
-        _ => None
+                v["pattern"].as_str()
+                    .ok_or(Error::NotString("pattern".to_string()))?.to_string(),
+                v["custom_patterns"].as_array())
+                .ok_or(Error::NotAnArray("custom_patterns".to_string()))?)),
+        s => Err(Error::MutatorNotFound(s.to_string()))
     }
 }

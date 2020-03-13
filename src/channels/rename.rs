@@ -1,10 +1,11 @@
-use crate::channels::mutators::Mutator;
-use crate::channels::mutators::*;
-
-use serde_json::{Map, Value};
 use std::fmt;
+
 use serde::export::Formatter;
-use std::fmt::Error;
+use serde_json::{Map, Value};
+
+use crate::channels::error::Error;
+use crate::channels::mutators::*;
+use crate::channels::mutators::Mutator;
 
 #[derive(Debug)]
 pub struct Rename {
@@ -13,18 +14,16 @@ pub struct Rename {
 }
 
 impl Mutator for Rename {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
-        let maybe_value = v.get(&self.modifier.field);
-        let value = match maybe_value {
-            None => return Some(anyhow!("value '{}' not found", self.modifier.field)),
-            Some(v) => v,
-        };
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
+        let value = v.get(&self.modifier.field)
+            .ok_or(Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
 
         let new_value = value.clone();
-        v.remove(self.modifier.field.as_str())?;
+        let _ = v.remove(self.modifier.field.as_str())
+            .ok_or(Error::CannotRemoveField(self.modifier.field.to_string()))?;
         v.insert(self.rename.clone(), new_value);
 
-        None
+        Ok(())
     }
 
     fn mutator_type(&self) -> MutatorType {
@@ -33,7 +32,7 @@ impl Mutator for Rename {
 }
 
 impl fmt::Display for Rename {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Rename '{}' to field: '{}'", self.rename, self.modifier.field)
     }
 }

@@ -1,8 +1,10 @@
-use crate::channels::mutators::{Mutator, Mutation, MutatorType};
-use serde_json::{Map, Value};
 use std::fmt;
+
 use serde::export::Formatter;
-use std::fmt::Error;
+use serde_json::{Map, Value};
+
+use crate::channels::error::Error;
+use crate::channels::mutators::{Mutation, Mutator, MutatorType};
 
 #[derive(Debug)]
 pub struct Remove {
@@ -10,10 +12,10 @@ pub struct Remove {
 }
 
 impl Mutator for Remove {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
         match v.remove(self.modifier.field.as_str()) {
-            None => Some(anyhow!("value {} not found", self.modifier.field)),
-            Some(_) => None
+            None => Error::FieldNotFoundInJSON(self.modifier.field.to_string()).into(),
+            Some(_) => Ok(())
         }
     }
 
@@ -23,7 +25,7 @@ impl Mutator for Remove {
 }
 
 impl fmt::Display for Remove {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Remove field: '{}'", self.modifier.field)
     }
 }

@@ -1,10 +1,11 @@
-use crate::channels::mutators::Mutator;
-use crate::channels::mutators::*;
-
-use serde_json::{Map, Value};
 use std::fmt;
+
 use serde::export::Formatter;
-use std::fmt::Error;
+use serde_json::{Map, Value};
+
+use crate::channels::error::Error;
+use crate::channels::mutators::*;
+use crate::channels::mutators::Mutator;
 
 #[derive(Debug)]
 pub struct Set {
@@ -13,10 +14,10 @@ pub struct Set {
 }
 
 impl Mutator for Set {
-    fn mutate(&self, v: &mut Map<String, Value>) -> Option<anyhow::Error> {
+    fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
         v.insert(self.modifier.field.clone(), self.value.clone());
 
-        None
+        Ok(())
     }
 
     fn mutator_type(&self) -> MutatorType {
@@ -25,7 +26,7 @@ impl Mutator for Set {
 }
 
 impl fmt::Display for Set {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Set '{}' to value: '{}'", self.modifier.field, self.value)
     }
 }
