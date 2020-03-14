@@ -12,6 +12,7 @@ use crate::components::simple_pair::{simple_pair_to_json, KvUTF8};
 use crate::server::handlers::{BytesResultIterator, BytesResultStream};
 use crate::server::query::Query;
 use crate::server::reply::Reply;
+use futures::executor::block_on;
 
 pub fn new_read_ok(res: &[u8]) -> Result<Response<Body>, Error> {
     let data: Box<Value> = box serde_json::from_slice(res).map_err(Error::SerdeError)?;
@@ -65,7 +66,7 @@ struct TotalRecords {
     total_records: i32,
 }
 
-pub async fn get_iterating_response_with_topic(
+pub fn get_iterating_response_with_topic(
     iter: SledgeIterator,
     topic_name: &str,
 ) -> Result<Response<Body>, Error> {
@@ -75,12 +76,9 @@ pub async fn get_iterating_response_with_topic(
         .create()
         .map_err(Error::KafkaError)?;
 
-    let thread_iter = iter
-        .filter_map(From::from)
-        .map(|v: KvUTF8| {
-            producer.send(FutureRecord::to(topic_name).payload(&v.value).key(&v.id), 0)
-        })
-        .map(move |delivery_status| delivery_status);
+    let thread_iter = iter.filter_map(From::from).map(|v: KvUTF8| {
+        producer.send(FutureRecord::to(topic_name).payload(&v.value).key(&v.id), 0)
+    });
 
     let mut reply = Reply::empty();
     let mut records = TotalRecords { total_records: 0 };
@@ -88,7 +86,7 @@ pub async fn get_iterating_response_with_topic(
     for delivery_result in thread_iter {
         records.total_records += 1;
 
-        let result = delivery_result.await;
+        let result = block_on(delivery_result);
         match result {
             Ok(r) => {
                 if let Err(err) = r {

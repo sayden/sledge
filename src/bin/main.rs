@@ -1,12 +1,11 @@
 extern crate hyper;
 extern crate tokio;
 
-use std::convert::Infallible;
 use std::task::{Context, Poll};
 
 use futures_util::future;
 use http::{Method, Uri};
-use hyper::service::{make_service_fn, service_fn, Service};
+use hyper::service::Service;
 use hyper::{Body, Request, Response, Server};
 
 use sledge::components::errors::Error;
@@ -72,42 +71,37 @@ impl Service<Request<Body>> for Svc {
         Ok(()).into()
     }
 
-    fn call(&mut self, _req: Request<Body>) -> Self::Future {
-        let resp = http::Response::new(Body::from("ok"));
-        future::ok(resp)
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
+        let (parts, body) = req.into_parts();
+        let query = get_query(&parts.uri);
+        let path = get_path(parts.uri.path());
+
+        let path = SPath {
+            route: path.get(0).cloned(),
+            cf: path.get(1).cloned(),
+            id_or_action: path.get(2).cloned(),
+            param1: path.get(3).cloned(),
+            id_or_action2: path.get(4).cloned(),
+            param2: path.get(5).cloned(),
+        };
+
+        let res: Result<Response<Body>, Error> = match parts.method {
+            Method::GET => get_handlers(ReadRequest { path, query }),
+            Method::PUT => put_handlers(BodyRequest { path, query, body }),
+            Method::POST => post_handlers(BodyRequest { path, query, body }),
+            _ => Err(Error::MethodNotFound),
+        };
+
+        match res {
+            Ok(res) => future::ok(res),
+            Err(err) => future::ok(err.into()),
+        }
     }
 }
 
-async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    let (parts, body) = req.into_parts();
-    let query = get_query(&parts.uri);
-    let path = get_path(parts.uri.path());
-
-    let path = SPath {
-        route: path.get(0).cloned(),
-        cf: path.get(1).cloned(),
-        id_or_action: path.get(2).cloned(),
-        param1: path.get(3).cloned(),
-        id_or_action2: path.get(4).cloned(),
-        param2: path.get(5).cloned(),
-    };
-
-    let res: Result<Response<Body>, Error> = match parts.method {
-        Method::GET => get_handlers(ReadRequest { path, query }).await,
-        Method::PUT => put_handlers(BodyRequest { path, query, body }).await,
-        Method::POST => post_handlers(BodyRequest { path, query, body }).await,
-        _ => Err(Error::MethodNotFound),
-    };
-
-    match res {
-        Ok(res) => Ok(res),
-        Err(err) => Ok(err.into()),
-    }
-}
-
-async fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
+fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     match (req.path.route, req.path.cf, req.path.id_or_action) {
-        (Some("_sql"), _, _) => handlers::sql(req.query, req.body).await,
+        (Some("_sql"), _, _) => handlers::sql(req.query, req.body),
         (Some("_db"), Some(cf_name), Some(id)) => handlers::get(cf_name, id, req.query)
             .and_then(Ok)
             .or_else(|err| Ok(err.into())),
@@ -115,13 +109,12 @@ async fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     }
 }
 
-async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
+fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     match req.path.route {
         Some("_db") => match req.path.cf {
             Some(cf_name) => match req.path.id_or_action {
                 // Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
                 id => handlers::put(cf_name, &req.query, id, req.body)
-                    .await
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into())),
             },
@@ -135,7 +128,7 @@ async fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     }
 }
 
-async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
+fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
     match (
         req.path.route,
         req.path.cf,
@@ -144,7 +137,7 @@ async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
         req.path.id_or_action2,
         req.path.param2,
     ) {
-        (Some("_db"), Some("_all"), _, _, _, _) => handlers::get_all_dbs(),
+        (Some("_db"), Some("_all"), ..) => handlers::get_all_dbs(),
         (
             Some("_db"),
             Some(cf_name),
@@ -160,26 +153,24 @@ async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
                     cf_name,
                     topic_name,
                 )
-                .await
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into()))
             } else {
-                handlers::since_to_topic(req.query, req.path.param1, cf_name, topic_name).await
+                handlers::since_to_topic(req.query, req.path.param1, cf_name, topic_name)
             }
         }
-        (Some("_db"), Some(cf_name), Some("_since"), Some(id), _, _) => {
+        (Some("_db"), Some(cf_name), Some("_since"), Some(id), ..) => {
             if id.ends_with('*') {
                 handlers::since_prefix(req.query, id.trim_end_matches('*'), cf_name)
-                    .await
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into()))
             } else {
-                handlers::since(req.query, req.path.param1, cf_name).await
+                handlers::since(req.query, req.path.param1, cf_name)
             }
         }
-        (Some("_db"), Some(cf_name), Some(id), _, _, _) => match id {
-            "_all" => handlers::all(req.query, cf_name).await,
-            "_all_reverse" => handlers::all_reverse(req.query, cf_name).await,
+        (Some("_db"), Some(cf_name), Some(id), ..) => match id {
+            "_all" => handlers::all(req.query, cf_name),
+            "_all_reverse" => handlers::all_reverse(req.query, cf_name),
             id => handlers::get(cf_name, id, req.query)
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into())),
@@ -192,13 +183,11 @@ async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(router)) });
+    let addr = "127.0.0.1:1337".parse().unwrap();
 
-    let addr = ([127, 0, 0, 1], 3000).into();
+    let server = Server::bind(&addr).serve(MakeSvc);
 
-    let server = Server::bind(&addr).serve(make_svc);
-
-    println!("Listening on http://{}", addr);
+    log::info!("Listening on http://{}", addr);
 
     server.await?;
 

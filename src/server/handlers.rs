@@ -1,5 +1,8 @@
+use std::str::from_utf8;
+
 use bytes::Bytes;
 use chrono::Utc;
+use futures::executor::block_on;
 use futures::Stream;
 use http::Response;
 use hyper::Body;
@@ -77,7 +80,7 @@ pub type BytesResultIterator = dyn Iterator<Item = BytesResult> + Send + Sync;
 //         .into())
 // }
 
-pub async fn since_prefix_to_topic(
+pub fn since_prefix_to_topic(
     query: Option<Query>,
     id: &str,
     cf_name: &str,
@@ -86,10 +89,10 @@ pub async fn since_prefix_to_topic(
     log::info!("since prefix topic {}", topic_name);
     let iter = rocks::range_prefix(id, cf_name)?;
 
-    get_iterating_response_with_topic(after_read_actions(iter, &query)?, topic_name).await
+    get_iterating_response_with_topic(after_read_actions(iter, &query)?, topic_name)
 }
 
-pub async fn since_prefix(
+pub fn since_prefix(
     query: Option<Query>,
     id: &str,
     cf_name: &str,
@@ -99,18 +102,18 @@ pub async fn since_prefix(
     get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn all(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
+pub fn all(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
     let iter = rocks::range_all(&query, None, cf_name)?;
 
     get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn all_reverse(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
+pub fn all_reverse(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
     let iter = rocks::range_all_reverse(cf_name)?;
     get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn since(
+pub fn since(
     query: Option<Query>,
     id: Option<&str>,
     cf_name: &str,
@@ -120,27 +123,24 @@ pub async fn since(
     get_iterating_response(after_read_actions(iter, &query)?, query)
 }
 
-pub async fn since_to_topic(
+pub fn since_to_topic(
     query: Option<Query>,
     id: Option<&str>,
     cf_name: &str,
     topic_name: &str,
 ) -> Result<Response<Body>, Error> {
-    eprintln!("topic_name = {:?}", topic_name);
     let id = get_id(&query, id, None)?;
     let iter = rocks::range(&query, id.as_ref(), cf_name)?;
-    get_iterating_response_with_topic(after_read_actions(iter, &query)?, topic_name).await
+    get_iterating_response_with_topic(after_read_actions(iter, &query)?, topic_name)
 }
 
-pub async fn put(
+pub fn put(
     cf: &str,
     query: &Option<Query>,
     path_id: Option<&str>,
     req: Body,
 ) -> Result<Response<Body>, Error> {
-    let value = hyper::body::to_bytes(req)
-        .await
-        .map_err(Error::BodyParsingError)?;
+    let value = block_on(hyper::body::to_bytes(req)).map_err(Error::BodyParsingError)?;
     let id = get_id(&query, path_id, Some(&value))?;
 
     let ch = get_channel(&query)?;
@@ -151,12 +151,9 @@ pub async fn put(
     Ok(res.into())
 }
 
-pub async fn sql(query: Option<Query>, req: Body) -> Result<Response<Body>, Error> {
-    let value = hyper::body::to_bytes(req)
-        .await
-        .map_err(Error::BodyParsingError)?;
-    let sql =
-        std::str::from_utf8(value.as_ref()).map_err(|err| Error::Utf8Error(err.to_string()))?;
+pub fn sql(query: Option<Query>, req: Body) -> Result<Response<Body>, Error> {
+    let value = block_on(hyper::body::to_bytes(req)).map_err(Error::BodyParsingError)?;
+    let sql = from_utf8(value.as_ref()).map_err(|err| Error::Utf8Error(err.to_string()))?;
 
     let dialect = GenericDialect {};
     let ast = Parser::parse_sql(&dialect, sql.to_string()).map_err(Error::SqlError)?;
