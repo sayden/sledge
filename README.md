@@ -16,13 +16,14 @@
 * [*] Infinite until finding key in json
 * [*] Skip N first records
 * [*] Mutate results by specifying an already stored mutator channel id
-* [ ] Read to output
+* [*] Read to output
 * [ ] SQL that covers SELECT _____ FROM ______ WHERE ______;
     * [*] Simple `SELECT [field]` and `SELECT *`
     * [*] Projections over fields (no functions)
     * [*] WHERE binary clauses for direct fields like `SELECT * FROM db WHERE age > 30 and name = 'mario'`
     * [*] WHERE binary compound clauses like `(a OR b) AND c`
     * [*] LIMIT expression
+    * [*] 'Prefix' like WHERE expression
     * [ ] SKIP like expression (FETCH? OFFSET?)
 
 ## Write queries
@@ -34,7 +35,7 @@
 * [*] Get the id from inside the JSON
 * [*] Auto-generate an id
 * [*] Auto-generate a time based id (insertion time)
-* [ ] Write from input
+* [ ] Write records from an input like Kafka
 
 ## Delete queries
 
@@ -46,12 +47,14 @@
 * [ ] Secondary indices
 * [ ] Outputs
   * [ ] HTTP
-  * [ ] Kafka
+  * [*] Kafka
   * [ ] NATS
 * [ ] Inputs
   * [ ] Kafka
   * [ ] NATS
 * [ ] Script mutator
+* [ ] Mutators using WebAssembly attached dynamically?
 * [ ] DB Statistics
 * [ ] Keep alive for range queries
 * [ ] Tail -f queries
+* [ ] UI

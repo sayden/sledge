@@ -22,28 +22,10 @@ fn get_path(p: &str) -> Vec<&str> {
     p.split('/').filter(|x| x != &"").collect()
 }
 
-#[derive(Debug)]
-pub struct Svc {}
-
-impl Service<Request<Body>> for Svc {
-    type Response = Response<Body>;
-    type Error = hyper::Error;
-    type Future = future::Ready<Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Ok(()).into()
-    }
-
-    fn call(&mut self, _req: Request<Body>) -> Self::Future {
-        let resp = http::Response::new(Body::from("ok"));
-        future::ok(resp)
-    }
-}
-
 struct SPath<'a> {
     route: Option<&'a str>,
     cf: Option<&'a str>,
-    
+
     id_or_action: Option<&'a str>,
     param1: Option<&'a str>,
 
@@ -75,6 +57,24 @@ impl<T> Service<T> for MakeSvc {
 
     fn call(&mut self, _: T) -> Self::Future {
         future::ok(Svc {})
+    }
+}
+
+#[derive(Debug)]
+pub struct Svc {}
+
+impl Service<Request<Body>> for Svc {
+    type Response = Response<Body>;
+    type Error = hyper::Error;
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Ok(()).into()
+    }
+
+    fn call(&mut self, _req: Request<Body>) -> Self::Future {
+        let resp = http::Response::new(Body::from("ok"));
+        future::ok(resp)
     }
 }
 
@@ -166,7 +166,7 @@ async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
             } else {
                 handlers::since_to_topic(req.query, req.path.param1, cf_name, topic_name).await
             }
-        },
+        }
         (Some("_db"), Some(cf_name), Some("_since"), Some(id), _, _) => {
             if id.ends_with('*') {
                 handlers::since_prefix(req.query, id.trim_end_matches('*'), cf_name)
@@ -176,7 +176,7 @@ async fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
             } else {
                 handlers::since(req.query, req.path.param1, cf_name).await
             }
-        },
+        }
         (Some("_db"), Some(cf_name), Some(id), _, _, _) => match id {
             "_all" => handlers::all(req.query, cf_name).await,
             "_all_reverse" => handlers::all_reverse(req.query, cf_name).await,

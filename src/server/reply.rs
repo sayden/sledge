@@ -26,6 +26,13 @@ impl From<Reply> for Response<Body> {
 }
 
 impl Reply {
+    pub fn empty() -> Self {
+        Reply {
+            error: false,
+            cause: None,
+            data: None,
+        }
+    }
     pub fn ok(data: Option<Box<Value>>) -> Self {
         Reply {
             error: false,

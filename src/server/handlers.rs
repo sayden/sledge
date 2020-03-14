@@ -1,5 +1,5 @@
-use crate::server::responses::get_iterating_response_with_topic;
 use bytes::Bytes;
+use chrono::Utc;
 use futures::Stream;
 use http::Response;
 use hyper::Body;
@@ -17,8 +17,8 @@ use crate::components::sql;
 use crate::server::filters::Filters;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
+use crate::server::responses::get_iterating_response_with_topic;
 use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_iter};
-use chrono::Utc;
 
 pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 pub type BytesResultStream = Box<dyn Stream<Item = BytesResult> + Send + Sync>;
@@ -86,7 +86,7 @@ pub async fn since_prefix_to_topic(
     log::info!("since prefix topic {}", topic_name);
     let iter = rocks::range_prefix(id, cf_name)?;
 
-    get_iterating_response_with_topic(after_read_actions(iter, &query)?, query, topic_name).await
+    get_iterating_response_with_topic(after_read_actions(iter, &query)?, topic_name).await
 }
 
 pub async fn since_prefix(
@@ -129,7 +129,7 @@ pub async fn since_to_topic(
     eprintln!("topic_name = {:?}", topic_name);
     let id = get_id(&query, id, None)?;
     let iter = rocks::range(&query, id.as_ref(), cf_name)?;
-    get_iterating_response_with_topic(after_read_actions(iter, &query)?, query, topic_name).await
+    get_iterating_response_with_topic(after_read_actions(iter, &query)?, topic_name).await
 }
 
 pub async fn put(

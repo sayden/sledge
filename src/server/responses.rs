@@ -1,18 +1,17 @@
-use crate::components::simple_pair::SimplePair;
 use bytes::Bytes;
 use hyper::Body;
 use hyper::Response;
+use rdkafka::config::ClientConfig;
+use rdkafka::producer::{FutureProducer, FutureRecord};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::components::errors::Error;
 use crate::components::iterator::SledgeIterator;
-use crate::components::simple_pair::simple_pair_to_json;
+use crate::components::simple_pair::{simple_pair_to_json, KvUTF8};
 use crate::server::handlers::{BytesResultIterator, BytesResultStream};
 use crate::server::query::Query;
 use crate::server::reply::Reply;
-use futures_util::future::FutureExt;
-use rdkafka::config::ClientConfig;
-use rdkafka::producer::{FutureProducer, FutureRecord};
 
 pub fn new_read_ok(res: &[u8]) -> Result<Response<Body>, Error> {
     let data: Box<Value> = box serde_json::from_slice(res).map_err(Error::SerdeError)?;
@@ -61,39 +60,54 @@ pub fn get_iterating_response(
         .map_err(Error::GeneratingResponse)
 }
 
+#[derive(Serialize, Deserialize)]
+struct TotalRecords {
+    total_records: i32,
+}
+
 pub async fn get_iterating_response_with_topic(
     iter: SledgeIterator,
-    query: Option<Query>,
     topic_name: &str,
 ) -> Result<Response<Body>, Error> {
-    let include_id = query.and_then(|q| q.include_ids).unwrap_or_else(|| false);
-
     let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", "21a1beed3ac5:9092")
+        .set("bootstrap.servers", "4af3c87b16f6:9092")
         .set("message.timeout.ms", "5000")
         .create()
         .map_err(Error::KafkaError)?;
 
     let thread_iter = iter
-        .map(|v: SimplePair| {
-            producer.send(
-                FutureRecord::to(topic_name)
-                    .payload(&String::from_utf8(v.value).unwrap())
-                    .key(&String::from_utf8(v.id).unwrap()),
-                0,
-            )
+        .filter_map(From::from)
+        .map(|v: KvUTF8| {
+            producer.send(FutureRecord::to(topic_name).payload(&v.value).key(&v.id), 0)
         })
-        .map(move |delivery_status| delivery_status)
-        .collect::<Vec<_>>();
+        .map(move |delivery_status| delivery_status);
 
-    for future in thread_iter {
-        log::info!("Future completed. Result: {:?}", future.await);
+    let mut reply = Reply::empty();
+    let mut records = TotalRecords { total_records: 0 };
+
+    for delivery_result in thread_iter {
+        records.total_records += 1;
+
+        let result = delivery_result.await;
+        match result {
+            Ok(r) => {
+                if let Err(err) = r {
+                    reply.error = true;
+                    reply.cause = reply
+                        .cause
+                        .map(|s| format!("{}: {:?}. {}", err.0.to_string(), err.1, s));
+                }
+            }
+            Err(_) => {
+                reply.error = true;
+                reply.cause = reply.cause.map(|s| format!("Cancelled delivery. {}", s));
+            }
+        }
     }
 
-    http::Response::builder()
-        .header("Content-Type", "application/json")
-        .body(Body::from(r#"{"error":false}\n"#))
-        .map_err(Error::GeneratingResponse)
+    reply.data = Some(box serde_json::to_value(records).unwrap_or_default());
+
+    Ok(reply.into())
 }
 
 pub fn unknown_error(err: String) -> Response<Body> {

@@ -10,6 +10,7 @@ use crate::components::iterator::{RawIteratorWrapper, SledgeIterator};
 use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
 
+//TODO Remove this static use and initialization of db
 lazy_static! {
     static ref DB: rocksdb::DB = {
         let maybe_path = env::var("FEEDB_PATH").unwrap_or_else(|_| "/tmp/storage".to_string());
@@ -33,7 +34,7 @@ pub fn range_all(
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
     let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
-    let sledge_iter: SledgeIterator = box source_iter.map(|i| SimplePair::new_boxed(i));
+    let sledge_iter: SledgeIterator = box source_iter.map(SimplePair::new_boxed);
 
     Ok(sledge_iter)
 }
@@ -42,17 +43,15 @@ pub fn range_all_reverse(cf_name: &str) -> Result<SledgeIterator, Error> {
     let cf = DB
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
-    let source_iter: DBIterator = DB.iterator_cf(cf, IteratorMode::End).map_err(Error::RocksDB)?;
+    let source_iter: DBIterator = DB
+        .iterator_cf(cf, IteratorMode::End)
+        .map_err(Error::RocksDB)?;
     let sledge_iter: SledgeIterator = box source_iter.map(SimplePair::new_boxed);
 
     Ok(sledge_iter)
 }
 
-pub fn range(
-    query: &Option<Query>,
-    id: &str,
-    cf_name: &str,
-) -> Result<SledgeIterator, Error> {
+pub fn range(query: &Option<Query>, id: &str, cf_name: &str) -> Result<SledgeIterator, Error> {
     let direction = get_range_direction(query);
     let mode = IteratorMode::From(id.as_bytes(), direction);
 
@@ -87,8 +86,7 @@ pub fn get<'a>(db: &'a str, id: &'a str) -> Result<SledgeIterator, Error> {
         .get_cf(cf, id)
         .map_err(Error::RocksDB)?
         .ok_or_else(|| Error::NotFound(id.to_string()))
-        .map(|v| box vec![SimplePair::new_str_vec(id, v)]
-            .into_iter())?;
+        .map(|v| box vec![SimplePair::new_str_vec(id, v)].into_iter())?;
 
     Ok(res)
 }
@@ -115,7 +113,7 @@ pub fn get_all_dbs() -> Result<Vec<String>, Error> {
         &rocksdb::Options::default(),
         env::var("FEEDB_PATH").unwrap_or_else(|_| "/tmp/storage".to_string()),
     )
-        .map_err(Error::RocksDB)
+    .map_err(Error::RocksDB)
 }
 
 pub fn new_storage(path: String) -> rocksdb::DB {
