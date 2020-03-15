@@ -6,9 +6,11 @@ use rocksdb::{DBIterator, IteratorMode, Options};
 use lazy_static::lazy_static;
 
 use crate::components::errors::Error;
-use crate::components::iterator::{RawIteratorWrapper, SledgeIterator};
+use crate::components::iterator::RawIteratorWrapper;
 use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
+
+pub trait SledgeIterator = Iterator<Item = SimplePair> + Send + Sync;
 
 //TODO Remove this static use and initialization of db
 lazy_static! {
@@ -22,7 +24,7 @@ pub fn range_all(
     query: &Option<Query>,
     _id: Option<String>,
     cf_name: &str,
-) -> Result<SledgeIterator, Error> {
+) -> Result<impl SledgeIterator, Error> {
     let direction = get_range_direction(query);
     let mode = match direction {
         rocksdb::Direction::Forward => IteratorMode::Start,
@@ -34,24 +36,24 @@ pub fn range_all(
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
     let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
-    let sledge_iter: SledgeIterator = box source_iter.map(SimplePair::new_boxed);
+    let sledge_iter = source_iter.map(SimplePair::new_boxed);
 
     Ok(sledge_iter)
 }
 
-pub fn range_all_reverse(cf_name: &str) -> Result<SledgeIterator, Error> {
+pub fn range_all_reverse(cf_name: &str) -> Result<impl SledgeIterator, Error> {
     let cf = DB
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
     let source_iter: DBIterator = DB
         .iterator_cf(cf, IteratorMode::End)
         .map_err(Error::RocksDB)?;
-    let sledge_iter: SledgeIterator = box source_iter.map(SimplePair::new_boxed);
+    let sledge_iter = source_iter.map(SimplePair::new_boxed);
 
     Ok(sledge_iter)
 }
 
-pub fn range(query: &Option<Query>, id: &str, cf_name: &str) -> Result<SledgeIterator, Error> {
+pub fn range(query: &Option<Query>, id: &str, cf_name: &str) -> Result<impl SledgeIterator, Error> {
     let direction = get_range_direction(query);
     let mode = IteratorMode::From(id.as_bytes(), direction);
 
@@ -60,24 +62,24 @@ pub fn range(query: &Option<Query>, id: &str, cf_name: &str) -> Result<SledgeIte
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
     let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
-    let sledge_iter: SledgeIterator = box source_iter.map(SimplePair::new_boxed);
+    let sledge_iter = source_iter.map(SimplePair::new_boxed);
 
     Ok(sledge_iter)
 }
 
-pub fn range_prefix(id: &str, cf_name: &str) -> Result<SledgeIterator, Error> {
+pub fn range_prefix(id: &str, cf_name: &str) -> Result<impl SledgeIterator, Error> {
     let cf = DB
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
     let mut iter = DB.raw_iterator_cf(cf).map_err(Error::RocksDB)?;
     iter.seek(id);
 
-    let ret_iter: SledgeIterator = box RawIteratorWrapper { inner: iter };
+    let ret_iter = RawIteratorWrapper { inner: iter };
 
     Ok(ret_iter)
 }
 
-pub fn get<'a>(db: &'a str, id: &'a str) -> Result<SledgeIterator, Error> {
+pub fn get<'a>(db: &'a str, id: &'a str) -> Result<impl SledgeIterator, Error> {
     let cf = DB
         .cf_handle(&db)
         .ok_or_else(|| Error::CFNotFound(db.to_string()))?;

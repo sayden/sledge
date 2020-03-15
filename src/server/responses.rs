@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::components::errors::Error;
-use crate::components::iterator::SledgeIterator;
+use crate::components::iterator::BoxedSledgeIter;
 use crate::components::simple_pair::{simple_pair_to_json, KvUTF8};
 use crate::server::handlers::{BytesResultIterator, BytesResultStream};
 use crate::server::query::Query;
@@ -20,45 +20,38 @@ pub fn new_read_ok(res: &[u8]) -> Result<Response<Body>, Error> {
     Ok(reply.into())
 }
 
-pub fn new_read_ok_iter(iter: SledgeIterator) -> Result<Response<Body>, Error> {
-    let data = box serde_json::to_value(
-        iter.flat_map(|x| simple_pair_to_json(x, true))
-            .collect::<Vec<Value>>(),
-    )
-    .map_err(Error::SerdeError)?;
+pub fn new_read_ok_iter(iter: BoxedSledgeIter) -> Result<Response<Body>, Error> {
+    let data = box serde_json::to_value(iter.flat_map(|x| simple_pair_to_json(x, true))
+                                            .collect::<Vec<Value>>()).map_err(Error::SerdeError)?;
 
     let reply = Reply::ok(Some(data));
 
     Ok(reply.into())
 }
 
-pub fn get_iterating_response(
-    iter: SledgeIterator,
-    query: Option<Query>,
-) -> Result<Response<Body>, Error> {
+pub fn get_iterating_response(iter: BoxedSledgeIter,
+                              query: Option<Query>)
+                              -> Result<Response<Body>, Error> {
     let include_id = query.and_then(|q| q.include_ids).unwrap_or_else(|| false);
 
-    let thread_iter: Box<BytesResultIterator> = box iter
-        .flat_map(move |x| simple_pair_to_json(x, include_id))
-        .flat_map(|spj| {
-            serde_json::to_string(&spj)
-                .map_err(|err| {
-                    log::warn!(
-                        "error trying to get json from simpleJSON: {}",
-                        err.to_string()
-                    )
+    let thread_iter: Box<BytesResultIterator> =
+        box iter.flat_map(move |x| simple_pair_to_json(x, include_id))
+                .flat_map(|spj| {
+                    serde_json::to_string(&spj).map_err(|err| {
+                                                   log::warn!("error trying to get json from \
+                                                               simpleJSON: {}",
+                                                              err.to_string())
+                                               })
+                                               .ok()
                 })
-                .ok()
-        })
-        .map(|s| format!("{}\n", s))
-        .map(|x| Ok(Bytes::from(x)));
+                .map(|s| format!("{}\n", s))
+                .map(|x| Ok(Bytes::from(x)));
 
     let stream: BytesResultStream = box futures::stream::iter(thread_iter);
 
-    http::Response::builder()
-        .header("Content-Type", "application/octet-stream")
-        .body(Body::from(stream))
-        .map_err(Error::GeneratingResponse)
+    http::Response::builder().header("Content-Type", "application/octet-stream")
+                             .body(Body::from(stream))
+                             .map_err(Error::GeneratingResponse)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -66,19 +59,27 @@ struct TotalRecords {
     total_records: i32,
 }
 
-pub fn get_iterating_response_with_topic(
-    iter: SledgeIterator,
-    topic_name: &str,
-) -> Result<Response<Body>, Error> {
-    let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", "4af3c87b16f6:9092")
-        .set("message.timeout.ms", "5000")
-        .create()
-        .map_err(Error::KafkaError)?;
+pub fn get_iterating_response_with_topic(iter: BoxedSledgeIter,
+                                         topic_name: Option<&str>)
+                                         -> Result<Response<Body>, Error> {
+    if topic_name.is_none() {
+        return Err(Error::WrongQuery);
+    }
 
-    let thread_iter = iter.filter_map(From::from).map(|v: KvUTF8| {
-        producer.send(FutureRecord::to(topic_name).payload(&v.value).key(&v.id), 0)
-    });
+    let topic = topic_name.unwrap();
+
+    let producer: FutureProducer = ClientConfig::new().set("bootstrap.servers",
+                                                           "4af3c87b16f6:9092")
+                                                      .set("message.timeout.ms", "5000")
+                                                      .create()
+                                                      .map_err(Error::KafkaError)?;
+
+    let thread_iter =
+        iter.filter_map(From::from).map(|v: KvUTF8| {
+                                       producer.send(FutureRecord::to(topic).payload(&v.value)
+                                                                            .key(&v.id),
+                                                     0)
+                                   });
 
     let mut reply = Reply::empty();
     let mut records = TotalRecords { total_records: 0 };
@@ -91,9 +92,9 @@ pub fn get_iterating_response_with_topic(
             Ok(r) => {
                 if let Err(err) = r {
                     reply.error = true;
-                    reply.cause = reply
-                        .cause
-                        .map(|s| format!("{}: {:?}. {}", err.0.to_string(), err.1, s));
+                    reply.cause =
+                        reply.cause
+                             .map(|s| format!("{}: {:?}. {}", err.0.to_string(), err.1, s));
                 }
             }
             Err(_) => {

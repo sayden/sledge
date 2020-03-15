@@ -10,11 +10,10 @@ use hyper::{Body, Request, Response, Server};
 
 use sledge::components::errors::Error;
 use sledge::server::handlers;
+use sledge::server::handlers::{PutRequest, SinceRequest};
 use sledge::server::query::Query;
 
-fn get_query(uri: &Uri) -> Option<Query> {
-    serde_urlencoded::from_str::<Query>(uri.query()?).ok()
-}
+fn get_query(uri: &Uri) -> Option<Query> { serde_urlencoded::from_str::<Query>(uri.query()?).ok() }
 
 fn get_path(p: &str) -> Vec<&str> {
     //TODO use some library for this
@@ -54,9 +53,7 @@ impl<T> Service<T> for MakeSvc {
         Ok(()).into()
     }
 
-    fn call(&mut self, _: T) -> Self::Future {
-        future::ok(Svc {})
-    }
+    fn call(&mut self, _: T) -> Self::Future { future::ok(Svc {}) }
 }
 
 #[derive(Debug)]
@@ -101,29 +98,30 @@ impl Service<Request<Body>> for Svc {
 
 fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
     match (req.path.route, req.path.cf, req.path.id_or_action) {
-        (Some("_sql"), _, _) => handlers::sql(req.query, req.body),
-        (Some("_db"), Some(cf_name), Some(id)) => handlers::get(cf_name, id, req.query)
-            .and_then(Ok)
-            .or_else(|err| Ok(err.into())),
+        (Some("_sql"), ..) => handlers::sql(req.query, req.body),
+        (Some("_db"), Some(cf_name), Some(id)) => {
+            handlers::get(cf_name, id, req.query)
+                .and_then(Ok)
+                .or_else(|err| Ok(err.into()))
+        }
         _ => Err(Error::WrongQuery),
     }
 }
 
 fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
-    match req.path.route {
-        Some("_db") => match req.path.cf {
-            Some(cf_name) => match req.path.id_or_action {
-                // Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
-                id => handlers::put(cf_name, &req.query, id, req.body)
-                    .and_then(Ok)
-                    .or_else(|err| Ok(err.into())),
-            },
-            _ => Err(Error::WrongQuery),
-        },
-        // (Some("db"), Some(cf_name), Some(id)) => match id {
-        //     "_create_db" => handlers::create_db(cf_name),
-        //     _ => Err(Error::WrongQuery)
-        // },
+    match (req.path.route, req.path.cf, req.path.id_or_action) {
+        // (Some("_db"), Some(cf), Some("_create_secondary_index"))=>Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
+        (Some("_db"), Some(cf), path_id) => {
+            handlers::put(PutRequest {
+                cf,
+                query: &req.query,
+                path_id,
+                req: req.body,
+            })
+            .and_then(Ok)
+            .or_else(|err| Ok(err.into()))
+        }
+
         _ => Err(Error::WrongQuery),
     }
 }
@@ -138,43 +136,55 @@ fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
         req.path.param2,
     ) {
         (Some("_db"), Some("_all"), ..) => handlers::get_all_dbs(),
-        (
-            Some("_db"),
-            Some(cf_name),
-            Some("_since"),
-            Some(id),
-            Some("_topic"),
-            Some(topic_name),
-        ) => {
+        (Some("_db"), Some(cf), Some("_since"), Some(id), Some("_topic"), topic) => {
             if id.ends_with('*') {
-                handlers::since_prefix_to_topic(
-                    req.query,
-                    id.trim_end_matches('*'),
-                    cf_name,
-                    topic_name,
-                )
+                handlers::since_prefix_to_topic(SinceRequest {
+                    query: req.query,
+                    id: Some(id.trim_end_matches('*')),
+                    cf,
+                    topic,
+                })
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into()))
             } else {
-                handlers::since_to_topic(req.query, req.path.param1, cf_name, topic_name)
+                handlers::since_to_topic(SinceRequest {
+                    query: req.query,
+                    id: req.path.param1,
+                    cf,
+                    topic,
+                })
             }
         }
-        (Some("_db"), Some(cf_name), Some("_since"), Some(id), ..) => {
+        (Some("_db"), Some(cf), Some("_since"), Some(id), ..) => {
             if id.ends_with('*') {
-                handlers::since_prefix(req.query, id.trim_end_matches('*'), cf_name)
-                    .and_then(Ok)
-                    .or_else(|err| Ok(err.into()))
+                handlers::since_prefix(SinceRequest {
+                    query: req.query,
+                    id: Some(id.trim_end_matches('*')),
+                    cf,
+                    topic: None,
+                })
+                .and_then(Ok)
+                .or_else(|err| Ok(err.into()))
             } else {
-                handlers::since(req.query, req.path.param1, cf_name)
+                handlers::since(SinceRequest {
+                    query: req.query,
+                    id: req.path.param1,
+                    cf,
+                    topic: None,
+                })
             }
         }
-        (Some("_db"), Some(cf_name), Some(id), ..) => match id {
-            "_all" => handlers::all(req.query, cf_name),
-            "_all_reverse" => handlers::all_reverse(req.query, cf_name),
-            id => handlers::get(cf_name, id, req.query)
-                .and_then(Ok)
-                .or_else(|err| Ok(err.into())),
-        },
+        (Some("_db"), Some(cf_name), Some(id), ..) => {
+            match id {
+                "_all" => handlers::all(req.query, cf_name),
+                "_all_reverse" => handlers::all_reverse(req.query, cf_name),
+                id => {
+                    handlers::get(cf_name, id, req.query)
+                        .and_then(Ok)
+                        .or_else(|err| Ok(err.into()))
+                }
+            }
+        }
         _ => Err(Error::WrongQuery),
     }
 }

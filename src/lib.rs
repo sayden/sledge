@@ -3,6 +3,7 @@
 #![feature(bool_to_option)]
 #![feature(try_trait)]
 #![feature(async_closure)]
+#![feature(trait_alias)]
 
 extern crate log;
 

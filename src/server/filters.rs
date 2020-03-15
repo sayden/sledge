@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sqlparser::ast::{SetExpr, Statement};
 
-use crate::components::iterator::SledgeIterator;
+use crate::components::iterator::BoxedSledgeIter;
 use crate::components::simple_pair::SimplePair;
 use crate::components::sql::check_limit_or_offset;
 use crate::components::sql::{solve_projection, solve_where};
@@ -46,9 +46,7 @@ impl Filters {
             itermods.push(Filter::Limit(limit));
         }
 
-        Filters {
-            inner: Some(itermods),
-        }
+        Filters { inner: Some(itermods) }
     }
 
     pub fn new(query: &Query) -> Self {
@@ -72,7 +70,7 @@ impl Filters {
             } else {
                 let a = res.get(0);
                 let b = res.get(1);
-                if let (Some(a), Some(b)) = (a, b){
+                if let (Some(a), Some(b)) = (a, b) {
                     itermods.push(Filter::FieldEquals((*a).to_string(), (*b).to_string()))
                 }
             }
@@ -82,12 +80,10 @@ impl Filters {
             return Filters { inner: None };
         }
 
-        Filters {
-            inner: Some(itermods),
-        }
+        Filters { inner: Some(itermods) }
     }
 
-    pub fn apply(&mut self, iter: SledgeIterator) -> SledgeIterator {
+    pub fn apply(&mut self, iter: BoxedSledgeIter) -> BoxedSledgeIter {
         if self.inner.as_ref().is_none() {
             return iter;
         }
@@ -168,33 +164,30 @@ mod tests {
 
     #[test]
     fn test_sql() {
-        let sql_query = std::fs::read_to_string("src/server/tests.sql")
-            .expect("Something went wrong reading the file");
+        let sql_query = std::fs::read_to_string("src/server/tests.sql").expect("Something went \
+                                                                                wrong reading \
+                                                                                the file");
 
-        let data = vec![
-            r#"{"name":"mario","age": 35}"#,
-            r#"{"name":"ula","age": 31}"#,
-        ];
+        let data = vec![r#"{"name":"mario","age": 35}"#,
+                        r#"{"name":"ula","age": 31}"#,];
 
         let dialect = GenericDialect {};
         let ast = Parser::parse_sql(&dialect, sql_query).unwrap();
 
         let mut f = Filters::new_sql(ast);
 
-        let vs = data.into_iter().map(|x| SimplePair {
-            id: Vec::from("asdas"),
-            value: Vec::from(x),
-        });
+        let vs = data.into_iter().map(|x| {
+                                     SimplePair { id: Vec::from("asdas"),
+                                                  value: Vec::from(x) }
+                                 });
 
         let res = f.apply(box vs).collect::<Vec<SimplePair>>();
 
         assert!(!res.is_empty());
 
         for i in res {
-            println!(
-                "SimplePair: {}",
-                std::str::from_utf8(i.value.as_slice()).unwrap()
-            );
+            println!("SimplePair: {}",
+                     std::str::from_utf8(i.value.as_slice()).unwrap());
         }
     }
 }
