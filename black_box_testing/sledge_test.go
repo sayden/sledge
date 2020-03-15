@@ -8,14 +8,19 @@ import (
 	"io/ioutil"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func doReq(t *testing.T, method string, reqS string, data string) string {
 	req, _ := http.NewRequest(method, reqS, bytes.NewReader([]byte(data)))
 
-	res, err := http.DefaultClient.Do(req)
+	client := http.DefaultClient
+	client.Timeout = 5 * time.Second
+
+	res, err := client.Do(req)
+	assert.NoError(t, err)
 	if err != nil {
-		assert.NoError(t, err)
+		t.Fatalf("request error: %v", err)
 	}
 	defer res.Body.Close()
 

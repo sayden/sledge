@@ -50,8 +50,11 @@ pub enum Error {
     #[error("error doing put {0}")]
     Put(String),
 
-    #[error("error creating keyspace with name {0}: {1}")]
-    CannotCreateKeyspace(String, String),
+    #[error("error creating db with name {0}: {1}")]
+    CannotCreateDb(String, String),
+
+    #[error("error reading db with name {0}: {1}")]
+    CannotReadDB(String, String),
 
     #[error("cannot retrieve cf with name {0}")]
     CannotRetrieveCF(String),

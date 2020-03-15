@@ -9,6 +9,7 @@ use crate::components::errors::Error;
 use crate::components::iterator::RawIteratorWrapper;
 use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
+use std::sync::{Arc, RwLock};
 
 pub trait SledgeIterator = Iterator<Item = SimplePair> + Send + Sync;
 
@@ -97,7 +98,7 @@ pub fn put(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
     let cf = DB
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
-    // let dB_: rocksdb::DB;
+
     let mut res: rocksdb::FlushOptions = rocksdb::FlushOptions::default();
     res.set_wait(true);
     DB.put_cf(cf, k, v)
@@ -105,10 +106,20 @@ pub fn put(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
         .or_else(|err| Err(Error::Put(err.to_string())))
 }
 
-// pub fn create_cf(cf_name: &str)-> Result<(),Error> {
-//     DB.create_cf(cf_name, &rocksdb::Options::default())
-//         .map_err(Error::RocksDB)
-// }
+pub fn create_cf(db: Arc<RwLock<rocksdb::DB>>, cf: &str) -> Result<(), Error> {
+    {
+        let mut inner = db.write().unwrap();
+        inner
+            .create_cf(cf, &rocksdb::Options::default())
+            .map_err(|err| Error::CannotCreateDb(cf.to_string(), err.to_string()))?;
+    }
+
+    if let Err(err) = rocksdb::DB::open_cf(&rocksdb::Options::default(), "/tmp/storage", vec![cf]) {
+        return Err(Error::CannotReadDB(cf.to_string(), err.to_string()));
+    }
+
+    Ok(())
+}
 
 pub fn get_all_dbs() -> Result<Vec<String>, Error> {
     rocksdb::DB::list_cf(
@@ -123,10 +134,12 @@ pub fn new_storage(path: String) -> rocksdb::DB {
     opts.create_if_missing(true);
 
     match rocksdb::DB::list_cf(&opts, path.clone()) {
-        Ok(cfs) => match rocksdb::DB::open_cf(&opts, path, cfs) {
-            Ok(db) => db,
-            Err(err) => panic!(err),
-        },
+        Ok(cfs) => {
+            match rocksdb::DB::open_cf(&opts, path, cfs) {
+                Ok(db) => db,
+                Err(err) => panic!(err),
+            }
+        }
         Err(e) => {
             log::warn!("{}", e.to_string());
             rocksdb::DB::open(&opts, path).unwrap()

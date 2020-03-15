@@ -1,4 +1,5 @@
 use std::str::from_utf8;
+use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
 use chrono::Utc;
@@ -153,15 +154,13 @@ pub fn sql(query: Option<Query>, req: Body) -> Result<Response<Body>, Error> {
     get_iterating_response(after_read_sql_actions(box iter, &query, ast)?, query)
 }
 
-// pub fn create_cf(cf_name: &str) -> Result<Response<Body>, Error> {
-//     rocks::create_cf(cf_name)?;
+pub fn create_db(db: Arc<RwLock<rocksdb::DB>>, cf: &str) -> Result<Response<Body>, Error> {
+    if let Err(err) = rocks::create_cf(db, cf) {
+        return Ok(err.into());
+    }
 
-//     Ok(WriteReply::<&str> {
-//         result: ResultEmbeddedReply::ok(),
-//         id: None,
-//     }
-//     .into())
-// }
+    Ok(Reply::ok(None).into())
+}
 
 pub fn get<'a>(cf: &'a str, id: &'a str, query: Option<Query>) -> Result<Response<Body>, Error> {
     let iter = rocks::get(&cf, &id)?;
@@ -176,19 +175,21 @@ pub fn get_all_dbs() -> Result<Response<Body>, Error> {
     new_read_ok(v.as_bytes())
 }
 
-fn after_read_sql_actions(iter: BoxedSledgeIter,
-                          query: &Option<Query>,
-                          ast: Vec<Statement>)
-                          -> Result<BoxedSledgeIter, Error> {
+fn after_read_sql_actions(
+    iter: BoxedSledgeIter,
+    query: &Option<Query>,
+    ast: Vec<Statement>,
+) -> Result<BoxedSledgeIter, Error> {
     let ch = get_channel(&query)?;
     let iter = with_channel(iter, ch, &query);
 
     Ok(Filters::new_sql(ast).apply(iter))
 }
 
-fn after_read_actions(iter: BoxedSledgeIter,
-                      query: &Option<Query>)
-                      -> Result<BoxedSledgeIter, Error> {
+fn after_read_actions(
+    iter: BoxedSledgeIter,
+    query: &Option<Query>,
+) -> Result<BoxedSledgeIter, Error> {
     let ch = get_channel(&query)?;
     let iter = with_channel(iter, ch, &query);
 
@@ -213,17 +214,19 @@ fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
     Ok(None)
 }
 
-fn get_id(query: &Option<Query>,
-          path_id: Option<&str>,
-          req: Option<&Bytes>)
-          -> Result<String, Error> {
+fn get_id(
+    query: &Option<Query>,
+    path_id: Option<&str>,
+    req: Option<&Bytes>,
+) -> Result<String, Error> {
     if let Some(q) = query {
         if let (Some(id), Some(req)) = (q.field_path.as_ref(), req) {
             let j: Value = serde_json::from_slice(req.as_ref()).map_err(Error::SerdeError)?;
             let val: &Value = json_nested_value(id, &j);
-            return Ok(val.as_str()
-                         .ok_or_else(|| Error::IdNotFoundInJSON(id.clone()))?
-                         .to_string());
+            return Ok(val
+                .as_str()
+                .ok_or_else(|| Error::IdNotFoundInJSON(id.clone()))?
+                .to_string());
         }
     }
 

@@ -1,6 +1,7 @@
 extern crate hyper;
 extern crate tokio;
 
+use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
 use futures_util::future;
@@ -9,9 +10,11 @@ use hyper::service::Service;
 use hyper::{Body, Request, Response, Server};
 
 use sledge::components::errors::Error;
+use sledge::components::rocks;
 use sledge::server::handlers;
 use sledge::server::handlers::{PutRequest, SinceRequest};
 use sledge::server::query::Query;
+use std::env;
 
 fn get_query(uri: &Uri) -> Option<Query> { serde_urlencoded::from_str::<Query>(uri.query()?).ok() }
 
@@ -42,7 +45,9 @@ struct BodyRequest<'a> {
     body: Body,
 }
 
-pub struct MakeSvc;
+pub struct MakeSvc {
+    db: Arc<RwLock<rocksdb::DB>>,
+}
 
 impl<T> Service<T> for MakeSvc {
     type Response = Svc;
@@ -53,11 +58,17 @@ impl<T> Service<T> for MakeSvc {
         Ok(()).into()
     }
 
-    fn call(&mut self, _: T) -> Self::Future { future::ok(Svc {}) }
+    fn call(&mut self, _: T) -> Self::Future {
+        future::ok(Svc {
+            db: self.db.clone(),
+        })
+    }
 }
 
 #[derive(Debug)]
-pub struct Svc {}
+pub struct Svc {
+    db: Arc<RwLock<rocksdb::DB>>,
+}
 
 impl Service<Request<Body>> for Svc {
     type Response = Response<Body>;
@@ -84,7 +95,7 @@ impl Service<Request<Body>> for Svc {
 
         let res: Result<Response<Body>, Error> = match parts.method {
             Method::GET => get_handlers(ReadRequest { path, query }),
-            Method::PUT => put_handlers(BodyRequest { path, query, body }),
+            Method::PUT => self.put_handlers(BodyRequest { path, query, body }),
             Method::POST => post_handlers(BodyRequest { path, query, body }),
             _ => Err(Error::MethodNotFound),
         };
@@ -92,6 +103,26 @@ impl Service<Request<Body>> for Svc {
         match res {
             Ok(res) => future::ok(res),
             Err(err) => future::ok(err.into()),
+        }
+    }
+}
+
+impl Svc {
+    fn put_handlers(&self, req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
+        match (req.path.route, req.path.cf, req.path.id_or_action) {
+            // (Some("_db"), Some(cf), Some("_create_secondary_index"))=>Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
+            (Some("_db"), Some(cf), Some("_create_db")) => handlers::create_db(self.db.clone(), cf),
+            (Some("_db"), Some(cf), path_id) => {
+                handlers::put(PutRequest {
+                    cf,
+                    query: &req.query,
+                    path_id,
+                    req: req.body,
+                })
+                .and_then(Ok)
+                .or_else(|err| Ok(err.into()))
+            }
+            _ => Err(Error::WrongQuery),
         }
     }
 }
@@ -104,24 +135,6 @@ fn post_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into()))
         }
-        _ => Err(Error::WrongQuery),
-    }
-}
-
-fn put_handlers(req: BodyRequest<'_>) -> Result<Response<Body>, Error> {
-    match (req.path.route, req.path.cf, req.path.id_or_action) {
-        // (Some("_db"), Some(cf), Some("_create_secondary_index"))=>Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
-        (Some("_db"), Some(cf), path_id) => {
-            handlers::put(PutRequest {
-                cf,
-                query: &req.query,
-                path_id,
-                req: req.body,
-            })
-            .and_then(Ok)
-            .or_else(|err| Ok(err.into()))
-        }
-
         _ => Err(Error::WrongQuery),
     }
 }
@@ -193,9 +206,12 @@ fn get_handlers(req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    let addr = "127.0.0.1:1337".parse().unwrap();
+    let addr = "127.0.0.1:3000".parse().unwrap();
 
-    let server = Server::bind(&addr).serve(MakeSvc);
+    let maybe_path = env::var("FEEDB_PATH").unwrap_or_else(|_| "/tmp/storage".to_string());
+    let db = Arc::new(RwLock::new(rocks::new_storage(maybe_path)));
+
+    let server = Server::bind(&addr).serve(MakeSvc { db });
 
     log::info!("Listening on http://{}", addr);
 
