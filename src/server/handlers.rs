@@ -87,6 +87,7 @@ pub struct SinceRequest<'a> {
     pub id: Option<&'a str>,
     pub cf: &'a str,
     pub topic: Option<&'a str>,
+    pub ch: Option<Channel>,
 }
 
 pub fn since_prefix_to_topic(r: SinceRequest) -> Result<Response<Body>, Error> {
@@ -200,7 +201,7 @@ fn after_read_actions_with_db(
     iter: BoxedSledgeIter,
     query: &Option<Query>,
 ) -> Result<BoxedSledgeIter, Error> {
-    let ch = get_channel(&query)?;
+    let ch = get_channel_with_db(db, &query)?;
     let iter = with_channel(iter, ch, &query);
 
     let mods = query.as_ref().map(|q| Filters::new(q));
@@ -243,6 +244,7 @@ fn get_channel_with_db(
     Ok(None)
 }
 
+// TODO Try to remove this function, it was moved to main.rs
 fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
     if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
         let res = rocks::get("_channel", &channel_id)?

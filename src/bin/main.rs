@@ -10,6 +10,7 @@ use http::{Method, Uri};
 use hyper::service::Service;
 use hyper::{Body, Request, Response, Server};
 
+use sledge::channels::channel::Channel;
 use sledge::components::errors::Error;
 use sledge::components::rocks;
 use sledge::server::handlers;
@@ -34,24 +35,21 @@ struct SPath<'a> {
     param2: Option<&'a str>,
 }
 
+struct CommonRequest<'a> {
+    ch: Option<Channel>,
+    path: SPath<'a>,
+    query: Option<Query>,
+    body: Body,
+}
+
 struct ReadRequest<'a> {
+    req: CommonRequest<'a>,
     db: RwLockReadGuard<'a, rocksdb::DB>,
-    path: SPath<'a>,
-    query: Option<Query>,
 }
 
-struct BodyReadRequest<'a> {
-    db: RwLockReadGuard<'a, rocksdb::DB>,
-    path: SPath<'a>,
-    query: Option<Query>,
-    body: Body,
-}
-
-struct BodyWriteRequest<'a> {
+struct WriteRequest<'a> {
+    c: CommonRequest<'a>,
     db: RwLockWriteGuard<'a, rocksdb::DB>,
-    path: SPath<'a>,
-    query: Option<Query>,
-    body: Body,
 }
 
 pub struct MakeSvc {
@@ -102,28 +100,30 @@ impl Service<Request<Body>> for Svc {
             param2: path.get(5).cloned(),
         };
 
+        let ch = match self.get_channel(&query) {
+            Ok(res) => res,
+            Err(err) => return future::ok(err.into()),
+        };
+
+        let common = CommonRequest {
+            ch,
+            path,
+            query,
+            body,
+        };
+
         let res: Result<Response<Body>, Error> = match parts.method {
             Method::GET => {
                 let db = self.db.read().unwrap();
-                self.get_handlers(ReadRequest { db, path, query })
+                self.get_handlers(ReadRequest { req: common, db })
             }
             Method::PUT => {
                 let db = self.db.write().unwrap();
-                self.put_handlers(BodyWriteRequest {
-                    db,
-                    path,
-                    query,
-                    body,
-                })
+                self.put_handlers(WriteRequest { c: common, db })
             }
             Method::POST => {
                 let db = self.db.read().unwrap();
-                self.post_handlers(BodyReadRequest {
-                    db,
-                    path,
-                    query,
-                    body,
-                })
+                self.post_handlers(ReadRequest { req: common, db })
             }
             _ => Err(Error::MethodNotFound),
         };
@@ -136,16 +136,16 @@ impl Service<Request<Body>> for Svc {
 }
 
 impl Svc {
-    fn put_handlers(&self, req: BodyWriteRequest<'_>) -> Result<Response<Body>, Error> {
-        match (req.path.route, req.path.cf, req.path.id_or_action) {
+    fn put_handlers(&self, req: WriteRequest<'_>) -> Result<Response<Body>, Error> {
+        match (req.c.path.route, req.c.path.cf, req.c.path.id_or_action) {
             // (Some("_db"), Some(cf), Some("_create_secondary_index"))=>Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
             (Some("_db"), Some(cf), Some("_create_db")) => handlers::create_db(self.db.clone(), cf),
             (Some("_db"), Some(cf), path_id) => {
                 handlers::put(PutRequest {
                     cf,
-                    query: &req.query,
+                    query: &req.c.query,
                     path_id,
-                    req: req.body,
+                    req: req.c.body,
                 })
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into()))
@@ -154,11 +154,15 @@ impl Svc {
         }
     }
 
-    fn post_handlers(&self, req: BodyReadRequest<'_>) -> Result<Response<Body>, Error> {
-        match (req.path.route, req.path.cf, req.path.id_or_action) {
-            (Some("_sql"), ..) => handlers::sql(self.db.clone(), req.query, req.body),
+    fn post_handlers(&self, req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
+        match (
+            req.req.path.route,
+            req.req.path.cf,
+            req.req.path.id_or_action,
+        ) {
+            (Some("_sql"), ..) => handlers::sql(self.db.clone(), req.req.query, req.req.body),
             (Some("_db"), Some(cf_name), Some(id)) => {
-                handlers::get(req.db, cf_name, id, req.query)
+                handlers::get(req.db, cf_name, id, req.req.query)
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into()))
             }
@@ -166,60 +170,64 @@ impl Svc {
         }
     }
 
-    fn get_handlers(&self, req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
+    fn get_handlers(&self, r: ReadRequest<'_>) -> Result<Response<Body>, Error> {
         match (
-            req.path.route,
-            req.path.cf,
-            req.path.id_or_action,
-            req.path.param1,
-            req.path.id_or_action2,
-            req.path.param2,
+            r.req.path.route,
+            r.req.path.cf,
+            r.req.path.id_or_action,
+            r.req.path.param1,
+            r.req.path.id_or_action2,
+            r.req.path.param2,
         ) {
             (Some("_db"), Some("_all"), ..) => handlers::get_all_dbs(),
             (Some("_db"), Some(cf), Some("_since"), Some(id), Some("_topic"), topic) => {
                 if id.ends_with('*') {
                     handlers::since_prefix_to_topic(SinceRequest {
-                        query: req.query,
+                        query: r.req.query,
                         id: Some(id.trim_end_matches('*')),
                         cf,
                         topic,
+                        ch: r.req.ch,
                     })
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into()))
                 } else {
                     handlers::since_to_topic(SinceRequest {
-                        query: req.query,
-                        id: req.path.param1,
+                        query: r.req.query,
+                        id: r.req.path.param1,
                         cf,
                         topic,
+                        ch: r.req.ch,
                     })
                 }
             }
             (Some("_db"), Some(cf), Some("_since"), Some(id), ..) => {
                 if id.ends_with('*') {
                     handlers::since_prefix(SinceRequest {
-                        query: req.query,
+                        query: r.req.query,
                         id: Some(id.trim_end_matches('*')),
                         cf,
                         topic: None,
+                        ch: r.req.ch,
                     })
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into()))
                 } else {
                     handlers::since(SinceRequest {
-                        query: req.query,
-                        id: req.path.param1,
+                        query: r.req.query,
+                        id: r.req.path.param1,
                         cf,
                         topic: None,
+                        ch: r.req.ch,
                     })
                 }
             }
             (Some("_db"), Some(cf_name), Some(id), ..) => {
                 match id {
-                    "_all" => handlers::all(req.query, cf_name),
-                    "_all_reverse" => handlers::all_reverse(req.query, cf_name),
+                    "_all" => handlers::all(r.req.query, cf_name),
+                    "_all_reverse" => handlers::all_reverse(r.req.query, cf_name),
                     id => {
-                        handlers::get(req.db, cf_name, id, req.query)
+                        handlers::get(r.db, cf_name, id, r.req.query)
                             .and_then(Ok)
                             .or_else(|err| Ok(err.into()))
                     }
@@ -227,6 +235,20 @@ impl Svc {
             }
             _ => Err(Error::WrongQuery),
         }
+    }
+
+    fn get_channel(&self, query: &Option<Query>) -> Result<Option<Channel>, Error> {
+        let inner = self.db.clone();
+
+        if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
+            let res = rocks::get_with_db(&inner.read().unwrap(), "_channel", &channel_id)?
+                .next()
+                .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
+            let c = Channel::new_vec(res.value)?;
+            return Ok(Some(c));
+        }
+
+        Ok(None)
     }
 }
 
