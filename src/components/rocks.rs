@@ -1,5 +1,5 @@
 use std::env;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use bytes::Bytes;
 use rocksdb::{DBIterator, IteratorMode, Options};
@@ -80,16 +80,34 @@ pub fn range_prefix(id: &str, cf_name: &str) -> Result<impl SledgeIterator, Erro
     Ok(ret_iter)
 }
 
-pub fn get<'a>(db: &'a str, id: &'a str) -> Result<impl SledgeIterator, Error> {
+pub fn get_with_db(
+    db: &RwLockReadGuard<rocksdb::DB>,
+    cf: &str,
+    id: &str,
+) -> Result<impl SledgeIterator, Error> {
+    let cf = db
+        .cf_handle(&cf)
+        .ok_or_else(|| Error::CFNotFound(cf.to_string()))?;
+
+    let res = db
+        .get_cf(cf, id)
+        .map_err(Error::RocksDB)?
+        .ok_or_else(|| Error::NotFound(id.to_string()))
+        .map(|v| vec![SimplePair::new_str_vec(id, v)].into_iter())?;
+
+    Ok(res)
+}
+
+pub fn get(cf: &str, id: &str) -> Result<impl SledgeIterator, Error> {
     let cf = DB
-        .cf_handle(&db)
-        .ok_or_else(|| Error::CFNotFound(db.to_string()))?;
+        .cf_handle(&cf)
+        .ok_or_else(|| Error::CFNotFound(cf.to_string()))?;
 
     let res = DB
         .get_cf(cf, id)
         .map_err(Error::RocksDB)?
         .ok_or_else(|| Error::NotFound(id.to_string()))
-        .map(|v| box vec![SimplePair::new_str_vec(id, v)].into_iter())?;
+        .map(|v| vec![SimplePair::new_str_vec(id, v)].into_iter())?;
 
     Ok(res)
 }

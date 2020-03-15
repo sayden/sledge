@@ -1,5 +1,5 @@
 use std::str::from_utf8;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use bytes::Bytes;
 use chrono::Utc;
@@ -140,7 +140,11 @@ pub fn put(r: PutRequest) -> Result<Response<Body>, Error> {
     Ok(res.into())
 }
 
-pub fn sql(query: Option<Query>, req: Body) -> Result<Response<Body>, Error> {
+pub fn sql(
+    db: Arc<RwLock<rocksdb::DB>>,
+    query: Option<Query>,
+    req: Body,
+) -> Result<Response<Body>, Error> {
     let value = block_on(hyper::body::to_bytes(req)).map_err(Error::BodyParsingError)?;
     let sql = from_utf8(value.as_ref()).map_err(|err| Error::Utf8Error(err.to_string()))?;
 
@@ -162,9 +166,14 @@ pub fn create_db(db: Arc<RwLock<rocksdb::DB>>, cf: &str) -> Result<Response<Body
     Ok(Reply::ok(None).into())
 }
 
-pub fn get<'a>(cf: &'a str, id: &'a str, query: Option<Query>) -> Result<Response<Body>, Error> {
-    let iter = rocks::get(&cf, &id)?;
-    new_read_ok_iter(after_read_actions(box iter, &query)?)
+pub fn get(
+    db: RwLockReadGuard<rocksdb::DB>,
+    cf: &str,
+    id: &str,
+    query: Option<Query>,
+) -> Result<Response<Body>, Error> {
+    let iter = rocks::get_with_db(&db, &cf, &id)?;
+    new_read_ok_iter(after_read_actions_with_db(db, box iter, &query)?)
 }
 
 pub fn get_all_dbs() -> Result<Response<Body>, Error> {
@@ -186,6 +195,23 @@ fn after_read_sql_actions(
     Ok(Filters::new_sql(ast).apply(iter))
 }
 
+fn after_read_actions_with_db(
+    db: RwLockReadGuard<rocksdb::DB>,
+    iter: BoxedSledgeIter,
+    query: &Option<Query>,
+) -> Result<BoxedSledgeIter, Error> {
+    let ch = get_channel(&query)?;
+    let iter = with_channel(iter, ch, &query);
+
+    let mods = query.as_ref().map(|q| Filters::new(q));
+    let iter2 = match mods {
+        Some(mut mods) => mods.apply(iter),
+        None => iter,
+    };
+
+    Ok(iter2)
+}
+
 fn after_read_actions(
     iter: BoxedSledgeIter,
     query: &Option<Query>,
@@ -200,6 +226,21 @@ fn after_read_actions(
     };
 
     Ok(iter2)
+}
+
+fn get_channel_with_db(
+    db: RwLockReadGuard<rocksdb::DB>,
+    query: &Option<Query>,
+) -> Result<Option<Channel>, Error> {
+    if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
+        let res = rocks::get_with_db(&db, "_channel", &channel_id)?
+            .next()
+            .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
+        let c = Channel::new_vec(res.value)?;
+        return Ok(Some(c));
+    }
+
+    Ok(None)
 }
 
 fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
