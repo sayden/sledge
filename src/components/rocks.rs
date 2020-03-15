@@ -1,4 +1,5 @@
 use std::env;
+use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
 use rocksdb::{DBIterator, IteratorMode, Options};
@@ -9,7 +10,6 @@ use crate::components::errors::Error;
 use crate::components::iterator::RawIteratorWrapper;
 use crate::components::simple_pair::SimplePair;
 use crate::server::query::Query;
-use std::sync::{Arc, RwLock};
 
 pub trait SledgeIterator = Iterator<Item = SimplePair> + Send + Sync;
 
@@ -107,16 +107,11 @@ pub fn put(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
 }
 
 pub fn create_cf(db: Arc<RwLock<rocksdb::DB>>, cf: &str) -> Result<(), Error> {
-    {
-        let mut inner = db.write().unwrap();
-        inner
-            .create_cf(cf, &rocksdb::Options::default())
-            .map_err(|err| Error::CannotCreateDb(cf.to_string(), err.to_string()))?;
-    }
-
-    if let Err(err) = rocksdb::DB::open_cf(&rocksdb::Options::default(), "/tmp/storage", vec![cf]) {
-        return Err(Error::CannotReadDB(cf.to_string(), err.to_string()));
-    }
+    let mut inner = db.write().unwrap();
+    inner
+        .create_cf(cf, &rocksdb::Options::default())
+        .map_err(|err| Error::CannotCreateDb(cf.to_string(), err.to_string()))?;
+    log::debug!("column family '{}' created", cf);
 
     Ok(())
 }
