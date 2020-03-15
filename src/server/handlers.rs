@@ -1,5 +1,5 @@
 use std::str::from_utf8;
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bytes::Bytes;
 use chrono::Utc;
@@ -127,15 +127,16 @@ pub struct PutRequest<'a> {
     pub query: &'a Option<Query>,
     pub path_id: Option<&'a str>,
     pub req: Body,
+    pub ch: Option<Channel>,
+    pub db: RwLockWriteGuard<'a, rocksdb::DB>,
 }
 
 pub fn put(r: PutRequest) -> Result<Response<Body>, Error> {
     let value = block_on(hyper::body::to_bytes(r.req)).map_err(Error::BodyParsingError)?;
     let id = get_id(&r.query, r.path_id, Some(&value))?;
 
-    let ch = get_channel(&r.query)?;
-    let value = with_channel_for_single_value(value, ch, r.query);
-    rocks::put(r.cf, &id, value)?;
+    let value = with_channel_for_single_value(value, r.ch, r.query);
+    rocks::put(r.db, r.cf, &id, value)?;
 
     let res = Reply::ok(None);
     Ok(res.into())

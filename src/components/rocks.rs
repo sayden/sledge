@@ -1,5 +1,5 @@
 use std::env;
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bytes::Bytes;
 use rocksdb::{DBIterator, IteratorMode, Options};
@@ -112,14 +112,19 @@ pub fn get(cf: &str, id: &str) -> Result<impl SledgeIterator, Error> {
     Ok(res)
 }
 
-pub fn put(cf_name: &str, k: &str, v: Bytes) -> Result<(), Error> {
-    let cf = DB
+pub fn put(
+    db: RwLockWriteGuard<rocksdb::DB>,
+    cf_name: &str,
+    k: &str,
+    v: Bytes,
+) -> Result<(), Error> {
+    let cf = db
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
 
     let mut res: rocksdb::FlushOptions = rocksdb::FlushOptions::default();
     res.set_wait(true);
-    DB.put_cf(cf, k, v)
+    db.put_cf(cf, k, v)
         .and(DB.flush_opt(&res))
         .or_else(|err| Err(Error::Put(err.to_string())))
 }

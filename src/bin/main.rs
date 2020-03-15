@@ -146,6 +146,8 @@ impl Svc {
                     query: &req.c.query,
                     path_id,
                     req: req.c.body,
+                    ch: req.c.ch,
+                    db: req.db,
                 })
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into()))
