@@ -1,17 +1,15 @@
-pub mod mutators;
-
-pub mod remove;
-pub mod upper_lower_case;
-pub mod join;
-pub mod append;
-pub mod rename;
-pub mod set;
-pub mod split;
-pub mod grok;
-pub mod trim_spaces;
-pub mod trim;
-pub mod sort;
-
-pub mod channel;
+mod append;
+pub(crate) mod channel;
+mod error;
+mod grok;
+mod join;
+mod mutators;
+mod remove;
+mod rename;
+mod set;
+mod sort;
+mod split;
 mod test_parser;
-pub(crate) mod error;
+mod trim;
+mod trim_spaces;
+mod upper_lower_case;

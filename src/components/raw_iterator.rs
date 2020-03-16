@@ -2,8 +2,6 @@ use rocksdb::DBRawIterator;
 
 use crate::components::simple_pair::SimplePair;
 
-pub type BoxedSledgeIter = Box<dyn Iterator<Item = SimplePair> + Send + Sync>;
-
 pub struct RawIteratorWrapper<'a> {
     pub inner: DBRawIterator<'a>,
 }

@@ -43,40 +43,23 @@ impl PartialOrd for SerdeValueWrapper {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match &self.inner {
             sValue::String(s) => other.inner.as_str().and_then(|x| s.as_str().partial_cmp(x)),
-            sValue::Number(n) => n
-                .as_f64()
-                .and_then(|n1| other.inner.as_f64().and_then(|n2| n1.partial_cmp(&n2))),
+            sValue::Number(n) => {
+                n.as_f64()
+                    .and_then(|n1| other.inner.as_f64().and_then(|n2| n1.partial_cmp(&n2)))
+            }
             _ => None,
         }
     }
 }
 
 impl PartialEq for SerdeValueWrapper {
-    fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
-    }
+    fn eq(&self, other: &Self) -> bool { self.inner == other.inner }
 }
 
 impl SerdeValueWrapper {
-    fn and(&self, other: &Self) -> bool {
-        !self.inner.is_null() & !other.inner.is_null()
-    }
+    fn and(&self, other: &Self) -> bool { !self.inner.is_null() & !other.inner.is_null() }
 
-    fn or(&self, other: &Self) -> bool {
-        !self.inner.is_null() | !other.inner.is_null()
-    }
-}
-
-pub fn check_limit_or_offset(e: &Option<Expr>) -> Option<usize> {
-    e.as_ref()
-        .map(|f| match f {
-            Expr::Value(n) => match n {
-                sqlparser::ast::Value::Number(n) => n.parse::<usize>().ok(),
-                _ => None,
-            },
-            _ => None,
-        })
-        .flatten()
+    fn or(&self, other: &Self) -> bool { !self.inner.is_null() | !other.inner.is_null() }
 }
 
 trait AsValue {
@@ -89,15 +72,19 @@ impl AsValue for Expr {
             inner: match self {
                 Expr::Identifier(i) => json_nested_value(i.as_ref(), jj).clone(),
                 Expr::CompoundIdentifier(c) => json_nested_value(&c.join("."), jj).clone(),
-                Expr::Value(v) => match v {
-                    sqlparser::ast::Value::Number(n) => sValue::from_str(n.as_str())
-                        .ok()
-                        .unwrap_or_else(|| sValue::Null),
-                    sqlparser::ast::Value::SingleQuotedString(s) => {
-                        serde_json::Value::from(s.as_str())
+                Expr::Value(v) => {
+                    match v {
+                        sqlparser::ast::Value::Number(n) => {
+                            sValue::from_str(n.as_str())
+                                .ok()
+                                .unwrap_or_else(|| sValue::Null)
+                        }
+                        sqlparser::ast::Value::SingleQuotedString(s) => {
+                            serde_json::Value::from(s.as_str())
+                        }
+                        _ => sValue::Null,
                     }
-                    _ => sValue::Null,
-                },
+                }
                 Expr::Nested(e) => return Right(solve_where(e, jj)),
                 unknown => return Right(solve_where(unknown, jj)),
             },
@@ -132,18 +119,20 @@ mod expr {
                     _ => false,
                 }
             }
-            (Either::Right(e1), Either::Right(e2)) => match op {
-                BinaryOperator::Eq => e1 == e2,
-                BinaryOperator::NotEq => e1 != e2,
-                BinaryOperator::And => e1 && e2,
-                BinaryOperator::Gt => e1.gt(&e2),
-                BinaryOperator::GtEq => e1.ge(&e2),
-                BinaryOperator::LtEq => e1.le(&e2),
-                BinaryOperator::Lt => e1.lt(&e2),
-                BinaryOperator::Or => e1 || e2,
-                // BinaryOperator::Divide => solve_binary(left, right, jj, | a,b | a / b, op::divide),
-                _ => false,
-            },
+            (Either::Right(e1), Either::Right(e2)) => {
+                match op {
+                    BinaryOperator::Eq => e1 == e2,
+                    BinaryOperator::NotEq => e1 != e2,
+                    BinaryOperator::And => e1 && e2,
+                    BinaryOperator::Gt => e1.gt(&e2),
+                    BinaryOperator::GtEq => e1.ge(&e2),
+                    BinaryOperator::LtEq => e1.le(&e2),
+                    BinaryOperator::Lt => e1.lt(&e2),
+                    BinaryOperator::Or => e1 || e2,
+                    // BinaryOperator::Divide => solve_binary(left, right, jj, | a,b | a / b, op::divide),
+                    _ => false,
+                }
+            }
             _ => false,
         }
     }
@@ -155,15 +144,17 @@ pub fn solve_projection(projection: &[SelectItem], jj: sValue) -> Option<sValue>
     for v in projection {
         match v {
             SelectItem::Wildcard => return Some(jj),
-            SelectItem::UnnamedExpr(e) => match e {
-                Expr::Function(f) => println!("Function {:?}", f),
-                Expr::Identifier(i) => {
-                    let a = jj.get(&i)?;
-                    out[i] = a.clone();
+            SelectItem::UnnamedExpr(e) => {
+                match e {
+                    Expr::Function(f) => println!("Function {:?}", f),
+                    Expr::Identifier(i) => {
+                        let a = jj.get(&i)?;
+                        out[i] = a.clone();
+                    }
+                    Expr::Value(v) => println!("Value {:?}", v),
+                    e => println!("Expression not recognized: {:?}", e),
                 }
-                Expr::Value(v) => println!("Value {:?}", v),
-                e => println!("Expression not recognized: {:?}", e),
-            },
+            }
             _ => (),
         }
     }

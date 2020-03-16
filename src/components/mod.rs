@@ -1,5 +1,5 @@
-pub mod errors;
-pub mod raw_iterator;
+pub(crate) mod errors;
+pub(crate) mod raw_iterator;
 pub mod rocks;
-pub mod simple_pair;
-pub mod sql;
+pub(crate) mod simple_pair;
+pub(crate) mod sql;

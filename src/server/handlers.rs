@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use bytes::Bytes;
 use chrono::Utc;
 use futures::executor::block_on;
-use futures::Stream;
 use http::Response;
 use hyper::Body;
 use rocksdb::DBIterator;
@@ -24,10 +23,6 @@ use crate::server::filters::Filters;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
 use crate::server::responses::get_iterating_response_with_topic;
-
-pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
-pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
-pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
 
 // struct IndexedValue {
 //     key: String,
@@ -112,7 +107,12 @@ pub struct SinceRequest<'a> {
 
 impl SinceRequest<'a> {
     pub fn new(
-        db: Arc<RwLock<rocksdb::DB>>, req: AppRequest<'a>, id: &'a str, cf: &'a str, topic: Option<&'a str>) -> Self {
+        db: Arc<RwLock<rocksdb::DB>>,
+        req: AppRequest<'a>,
+        id: &'a str,
+        cf: &'a str,
+        topic: Option<&'a str>,
+    ) -> Self {
         let is_prefix = id.ends_with('*');
         let id = if is_prefix {
             Some(id.trim_end_matches('*'))
@@ -127,7 +127,7 @@ impl SinceRequest<'a> {
             topic,
             ch: req.ch,
             db,
-            is_prefix
+            is_prefix,
         }
     }
 }
@@ -158,7 +158,6 @@ impl PutRequest<'a> {
         }
     }
 }
-
 
 pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
     if r.is_prefix {
@@ -296,7 +295,7 @@ pub fn new_read_ok_iter_with_db(v: Vec<SimplePair>) -> Result<Response<Body>, Er
             .flat_map(|x| simple_pair_to_json(x, true))
             .collect::<Vec<Value>>(),
     )
-        .map_err(Error::SerdeError)?;
+    .map_err(Error::SerdeError)?;
 
     let reply = Reply::ok(Some(data));
 
