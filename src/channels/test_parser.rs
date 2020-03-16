@@ -1,8 +1,8 @@
 #[test]
 fn test_parser() {
+    use crate::channels::channel::parse_and_modify;
     #[cfg(test)]
     use crate::channels::channel::Channel;
-    use crate::channels::channel::parse_and_modify_u8;
     env_logger::init();
 
     let data = r#"{"name":"John", "surname": "Doe", "age":43,"delete":"this","phones":["+44 1234567","+44 2345678"],"phones_uk":["+44 1234567","+44 2345678"],"to_sort":[4,3,8],"to_sort_s":["were","asdasd","qweqw"]                  }"#;
@@ -77,22 +77,25 @@ fn test_parser() {
         ]
     }"#;
 
-    let expected = Vec::from(r#"{"age":43,"full_name_hello":["john","doe","hello"],"grok_first":"John","grok_second":"Doe","my_field":"_value","name":"John","phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","surname":"Doe","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#);
+    let expected = Vec::from(
+        r#"{"age":43,"full_name_hello":["john","doe","hello"],"grok_first":"John","grok_second":"Doe","my_field":"_value","name":"John","phones":["+44 1234567","+44 2345678"],"phones_uk":"+44 1234567,+44 2345678","surname":"Doe","to_sort":[8,4,3],"to_sort_s":["asdasd","qweqw","were"]}"#,
+    );
 
-    let channel = Channel::new_str(mutators_json_array).unwrap();
+    let channel = Channel::new_vec(Vec::from(mutators_json_array)).unwrap();
 
-    let res = parse_and_modify_u8(data.as_bytes(), &channel, true);
-    let a = std::str::from_utf8(res.unwrap().as_ref()).unwrap().to_string();
+    let res = parse_and_modify(data.as_bytes(), &channel);
+    let a = std::str::from_utf8(res.unwrap().as_ref())
+        .unwrap()
+        .to_string();
     let b = std::str::from_utf8(expected.as_ref()).unwrap().to_string();
     assert_eq!(a, b)
 }
 
 #[test]
 fn test_parser_input_plain_text() {
+    use crate::channels::channel::parse_and_modify;
     #[cfg(test)]
     use crate::channels::channel::Channel;
-    use crate::channels::channel::parse_and_modify_u8;
-
 
     let data = r#"hello world"#;
 
@@ -112,13 +115,15 @@ fn test_parser_input_plain_text() {
         ]
     }"#;
 
-    let expected = Vec::from(r#"{"full_msg":"hello, world","grok.first":"hello","grok.second":"world"}"#);
+    let expected =
+        Vec::from(r#"{"full_msg":"hello, world","grok.first":"hello","grok.second":"world"}"#);
 
-    let channel = Channel::new_str(mutators_json_array).unwrap();
+    let channel = Channel::new_vec(Vec::from(mutators_json_array)).unwrap();
 
-    
-    let res = parse_and_modify_u8(data.as_bytes(), &channel, false);
-    let a = std::str::from_utf8(res.unwrap().as_ref()).unwrap().to_string();
+    let res = parse_and_modify(data.as_bytes(), &channel);
+    let a = std::str::from_utf8(res.unwrap().as_ref())
+        .unwrap()
+        .to_string();
     let b = std::str::from_utf8(expected.as_ref()).unwrap().to_string();
     assert_eq!(a, b)
 }

@@ -10,6 +10,7 @@ use crate::components::errors::Error;
 pub struct Channel {
     pub name: String,
     pub channel: Vec<Box<dyn Mutator>>,
+    pub omit_errors: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -19,91 +20,84 @@ pub struct ChannelToParseJSON {
 }
 
 impl Channel {
-    pub fn new_str(mo: &str) -> Result<Self, Error> {
-        let ms: ChannelToParseJSON = serde_json::from_str(mo)
-            .or_else(|err| Err(Error::SerdeError(err)))?;
+    pub fn new_vec(mo: Vec<u8>, omit_errors: bool) -> Result<Self, Error> {
+        let ms: ChannelToParseJSON =
+            serde_json::from_slice(mo.as_slice()).or_else(|err| Err(Error::SerdeError(err)))?;
 
-        Channel::new(ms)
+        Channel::new(ms, omit_errors)
     }
 
-    pub fn new_vec(mo: Vec<u8>) -> Result<Self, Error> {
-        let ms: ChannelToParseJSON = serde_json::from_slice(mo.as_slice())
-            .or_else(|err| Err(Error::SerdeError(err)))?;
-
-        Channel::new(ms)
-    }
-
-    pub fn new_u8(mo: &[u8]) -> Result<Self, Error> {
-        let ms: ChannelToParseJSON = serde_json::from_slice(mo)
-            .or_else(|err| Err(Error::SerdeError(err)))?;
-
-        Channel::new(ms)
-    }
-
-    fn new(ms: ChannelToParseJSON) -> Result<Self, Error> {
-        let mutators = ms.channel.into_iter()
-            .filter_map(|x| match factory(x.clone()) {
-                Err(e) => {
-                    log::error!("channel parsing error {}. Error: {}", x, e.to_string());
-                    None
+    fn new(ms: ChannelToParseJSON, omit_errors: bool) -> Result<Self, Error> {
+        let mutators = ms
+            .channel
+            .into_iter()
+            .filter_map(|x| {
+                match factory(x.clone()) {
+                    Err(e) => {
+                        log::error!("channel parsing error {}. Error: {}", x, e.to_string());
+                        None
+                    }
+                    Ok(v) => Some(v),
                 }
-                Ok(v) => Some(v),
             })
             .collect::<Vec<Box<dyn Mutator>>>();
 
-        Ok(Channel { name: "".to_string(), channel: mutators })
+        Ok(Channel {
+            name: "".to_string(),
+            channel: mutators,
+            omit_errors,
+        })
+    }
+
+    pub fn parse_and_modify<'a>(&self, input_data: &[u8]) -> Option<Vec<u8>> {
+        if self.channel.len() == 0 {
+            log::warn!("mutator list in channel is empty");
+            return None;
+        }
+
+        let first_mod = self.channel.first().unwrap();
+        let maybe_value = match first_mod.mutator_type() {
+            MutatorType::Grok => {
+                let g = first_mod.as_grok().unwrap();
+                if g.modifier.field == "_plain_input" {
+                    g.mutate_plain_string(input_data)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        let mut x = maybe_value.or(serde_json::from_slice(input_data)
+            .map_err(|err| log::warn!("error trying to mutate value: {}", err))
+            .ok())?;
+
+        let mutp = x.as_object_mut()?;
+
+        for modifier in self.channel.iter() {
+            match modifier.mutate(mutp.borrow_mut()) {
+                Err(err) => {
+                    log::warn!("error trying to modify json '{}'", err);
+                    if self.omit_errors {
+                        return None;
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        serde_json::to_vec(&mutp)
+            .map_err(|err| {
+                log::warn!(
+                    "error trying to create mutable reference to json: {}",
+                    err.to_string()
+                )
+            })
+            .ok()
     }
 }
 
 impl Deref for Channel {
     type Target = Vec<Box<dyn Mutator>>;
-    fn deref(&self) -> &Self::Target {
-        &self.channel
-    }
-}
-
-pub fn parse_and_modify_u8<'a>(input_data: &[u8], mods: &Channel, omit_errors: bool) -> Option<Vec<u8>> {
-    if mods.len() == 0 {
-        log::warn!("mutator list in channel is empty");
-        return None;
-    }
-
-    let first_mod = mods.first().unwrap();
-    let maybe_value = match first_mod.mutator_type() {
-        MutatorType::Grok => {
-            let g = first_mod.as_grok().unwrap();
-            if g.modifier.field == "_plain_input" {
-                g.mutate_plain_string(input_data)
-            } else {
-                None
-            }
-        }
-        _ => None,
-    };
-
-    let x = maybe_value.or(serde_json::from_slice(input_data)
-        .map_err(|err| log::warn!("error trying to mutate value: {}", err))
-        .ok())?;
-
-    parse_and_modify(x, mods, omit_errors)
-}
-
-fn parse_and_modify(mut p: Value, mods: &Channel, omit_errors: bool) -> Option<Vec<u8>> {
-    let mutp = p.as_object_mut()?;
-
-    for modifier in mods.iter() {
-        match modifier.mutate(mutp.borrow_mut()) {
-            Err(err) => {
-                log::warn!("error trying to modify json '{}'", err);
-                if omit_errors {
-                    return None;
-                }
-            }
-            _ => (),
-        }
-    }
-
-    serde_json::to_vec(&mutp)
-        .map_err(|err| log::warn!("error trying to create mutable reference to json: {}", err.to_string()))
-        .ok()
+    fn deref(&self) -> &Self::Target { &self.channel }
 }

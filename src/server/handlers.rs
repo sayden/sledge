@@ -1,5 +1,5 @@
 use std::str::from_utf8;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
 use chrono::Utc;
@@ -7,23 +7,23 @@ use futures::executor::block_on;
 use futures::Stream;
 use http::Response;
 use hyper::Body;
+use rocksdb::DBIterator;
 use serde_json::Value;
-use sqlparser::ast::Statement;
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
 use uuid::Uuid;
 
 use crate::channels::channel::Channel;
 use crate::components::errors::Error;
-use crate::components::iterator::{with_channel, with_channel_for_single_value, BoxedSledgeIter};
+use crate::components::raw_iterator::RawIteratorWrapper;
 use crate::components::rocks;
 use crate::components::rocks::SledgeIterator;
+use crate::components::simple_pair::{simple_pair_to_json, SimplePair};
 use crate::components::sql;
 use crate::server::filters::Filters;
 use crate::server::query::Query;
 use crate::server::reply::Reply;
 use crate::server::responses::get_iterating_response_with_topic;
-use crate::server::responses::{get_iterating_response, new_read_ok, new_read_ok_iter};
 
 pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 pub type BytesResultStream = Box<dyn Stream<Item = BytesResult> + Send + Sync>;
@@ -88,64 +88,93 @@ pub struct SinceRequest<'a> {
     pub cf: &'a str,
     pub topic: Option<&'a str>,
     pub ch: Option<Channel>,
-}
-
-pub fn since_prefix_to_topic(r: SinceRequest) -> Result<Response<Body>, Error> {
-    let iter = rocks::range_prefix(r.id.unwrap(), r.cf)?;
-    get_iterating_response_with_topic(after_read_actions(box iter, &r.query)?, r.topic)
-}
-
-pub fn since_prefix(r: SinceRequest) -> Result<Response<Body>, Error> {
-    let iter = rocks::range_prefix(r.id.unwrap(), r.cf)?;
-    get_iterating_response(after_read_actions(box iter, &r.query)?, r.query)
-}
-
-pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
-    let id = get_id(&r.query, r.id, None)?;
-    let iter = rocks::range(&r.query, id.as_ref(), r.cf)?;
-    get_iterating_response(after_read_actions(box iter, &r.query)?, r.query)
-}
-
-pub fn since_to_topic(r: SinceRequest) -> Result<Response<Body>, Error> {
-    let id = get_id(&r.query, r.id, None)?;
-    let iter = rocks::range(&r.query, id.as_ref(), r.cf)?;
-    get_iterating_response_with_topic(after_read_actions(box iter, &r.query)?, r.topic)
-}
-
-pub fn all(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
-    let iter = rocks::range_all(&query, None, cf_name)?;
-    get_iterating_response(after_read_actions(box iter, &query)?, query)
-}
-
-pub fn all_reverse(query: Option<Query>, cf_name: &str) -> Result<Response<Body>, Error> {
-    let iter = rocks::range_all_reverse(cf_name)?;
-    get_iterating_response(after_read_actions(box iter, &query)?, query)
+    pub db: Arc<RwLock<rocksdb::DB>>,
 }
 
 pub struct PutRequest<'a> {
     pub cf: &'a str,
-    pub query: &'a Option<Query>,
+    pub query: Option<Query>,
     pub path_id: Option<&'a str>,
     pub req: Body,
     pub ch: Option<Channel>,
-    pub db: RwLockWriteGuard<'a, rocksdb::DB>,
+    pub db: Arc<RwLock<rocksdb::DB>>,
+}
+
+pub fn since_prefix(r: SinceRequest) -> Result<Response<Body>, Error> {
+    let data = rocks::range_prefix(r.db, r.id.unwrap(), r.cf, filters_raw(r.query, r.ch))?;
+
+    get_iterating_response_with_topic(data, r.topic)
+}
+
+pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
+    let id = get_id(&r.query, r.id, None)?;
+
+    let data = rocks::rangef(
+        r.db,
+        is_reverse(&r.query),
+        Some(id.as_ref()),
+        r.cf,
+        filters(r.query, r.ch),
+    )?;
+
+    get_iterating_response_with_topic(data, r.topic)
+}
+
+pub fn all(
+    db: Arc<RwLock<rocksdb::DB>>,
+    query: Option<Query>,
+    cf: &str,
+    ch: Option<Channel>,
+) -> Result<Response<Body>, Error> {
+    let id = get_id(&query, None, None)?;
+    let result = rocks::rangef(
+        db,
+        is_reverse(&query),
+        Some(id.as_str()),
+        cf,
+        filters(query, ch),
+    )?;
+    new_read_ok_iter_with_db(result)
 }
 
 pub fn put(r: PutRequest) -> Result<Response<Body>, Error> {
     let value = block_on(hyper::body::to_bytes(r.req)).map_err(Error::BodyParsingError)?;
     let id = get_id(&r.query, r.path_id, Some(&value))?;
 
-    let value = with_channel_for_single_value(value, r.ch, r.query);
-    rocks::put(r.db, r.cf, &id, value)?;
+    let cf = r.cf;
+    let mut filters = Filters::new(r.query, r.ch, None);
+    let sp = SimplePair {
+        id: Vec::from(id),
+        value: value.to_vec(),
+    };
+    let iter = filters.apply(vec![sp].into_iter());
+    let errors = iter
+        .filter_map(move |v| {
+            let res = rocks::put(cf, v.id, v.value);
+            if let Err(e) = res {
+                Some(e.to_string())
+            } else {
+                None
+            }
+        })
+        .fold(None, |acc, s| {
+            match acc {
+                Some(e) => Some(format!("{}, {}", e, s)),
+                None => Some(s),
+            }
+        });
 
-    let res = Reply::ok(None);
-    Ok(res.into())
+    match errors {
+        Some(errs) => Err(Error::Multi(errs)),
+        None => Ok(Reply::ok(None).into()),
+    }
 }
 
 pub fn sql(
     db: Arc<RwLock<rocksdb::DB>>,
     query: Option<Query>,
     req: Body,
+    ch: Option<Channel>,
 ) -> Result<Response<Body>, Error> {
     let value = block_on(hyper::body::to_bytes(req)).map_err(Error::BodyParsingError)?;
     let sql = from_utf8(value.as_ref()).map_err(|err| Error::Utf8Error(err.to_string()))?;
@@ -155,9 +184,35 @@ pub fn sql(
 
     let from = sql::utils::get_from(&ast).ok_or_else(|| Error::CFNotFound("".to_string()))?;
 
-    let iter = rocks::range_all(&None, None, from.as_str())?;
+    let result = rocks::rangef(
+        db,
+        is_reverse(&query),
+        None,
+        from.as_str(),
+        filters(query, ch),
+    )?;
+    new_read_ok_iter_with_db(result)
+}
 
-    get_iterating_response(after_read_sql_actions(box iter, &query, ast)?, query)
+pub fn get(
+    db: Arc<RwLock<rocksdb::DB>>,
+    cf: &str,
+    id: &str,
+    query: Option<Query>,
+    ch: Option<Channel>,
+) -> Result<Response<Body>, Error> {
+    let result = rocks::get(db, &cf, &id, filters_single(query, ch))?;
+    new_read_ok_iter_with_db(result)
+}
+
+pub fn get_all_dbs() -> Result<Response<Body>, Error> {
+    let res = rocks::get_all_dbs()?;
+
+    let v = serde_json::to_string(&res).map_err(Error::SerdeError)?;
+
+    let data: Box<Value> = box serde_json::from_slice(v.as_bytes()).map_err(Error::SerdeError)?;
+    let reply = Reply::ok(Some(data));
+    Ok(reply.into())
 }
 
 pub fn create_db(db: Arc<RwLock<rocksdb::DB>>, cf: &str) -> Result<Response<Body>, Error> {
@@ -168,94 +223,60 @@ pub fn create_db(db: Arc<RwLock<rocksdb::DB>>, cf: &str) -> Result<Response<Body
     Ok(Reply::ok(None).into())
 }
 
-pub fn get(
-    db: RwLockReadGuard<rocksdb::DB>,
-    cf: &str,
-    id: &str,
+fn is_reverse(q: &Option<Query>) -> bool {
+    q.as_ref()
+        .and_then(|q| q.direction_reverse)
+        .unwrap_or_default()
+}
+
+pub fn new_read_ok_iter_with_db(v: Vec<SimplePair>) -> Result<Response<Body>, Error> {
+    let data = box serde_json::to_value(
+        v.into_iter()
+            .flat_map(|x| simple_pair_to_json(x, true))
+            .collect::<Vec<Value>>(),
+    )
+    .map_err(Error::SerdeError)?;
+
+    let reply = Reply::ok(Some(data));
+
+    Ok(reply.into())
+}
+
+fn filters(
     query: Option<Query>,
-) -> Result<Response<Body>, Error> {
-    let iter = rocks::get_with_db(&db, &cf, &id)?;
-    new_read_ok_iter(after_read_actions_with_db(db, box iter, &query)?)
-}
+    ch: Option<Channel>,
+) -> Box<dyn FnOnce(DBIterator) -> Vec<SimplePair>> {
+    box move |iter| -> Vec<SimplePair> {
+        let sledge_iter = iter.map(SimplePair::new_boxed);
+        let mut mods = Filters::new(query, ch, None);
+        let iter2 = mods.apply(sledge_iter);
 
-pub fn get_all_dbs() -> Result<Response<Body>, Error> {
-    let res = rocks::get_all_dbs()?;
-
-    let v = serde_json::to_string(&res).map_err(Error::SerdeError)?;
-
-    new_read_ok(v.as_bytes())
-}
-
-fn after_read_sql_actions(
-    iter: BoxedSledgeIter,
-    query: &Option<Query>,
-    ast: Vec<Statement>,
-) -> Result<BoxedSledgeIter, Error> {
-    let ch = get_channel(&query)?;
-    let iter = with_channel(iter, ch, &query);
-
-    Ok(Filters::new_sql(ast).apply(iter))
-}
-
-fn after_read_actions_with_db(
-    db: RwLockReadGuard<rocksdb::DB>,
-    iter: BoxedSledgeIter,
-    query: &Option<Query>,
-) -> Result<BoxedSledgeIter, Error> {
-    let ch = get_channel_with_db(db, &query)?;
-    let iter = with_channel(iter, ch, &query);
-
-    let mods = query.as_ref().map(|q| Filters::new(q));
-    let iter2 = match mods {
-        Some(mut mods) => mods.apply(iter),
-        None => iter,
-    };
-
-    Ok(iter2)
-}
-
-fn after_read_actions(
-    iter: BoxedSledgeIter,
-    query: &Option<Query>,
-) -> Result<BoxedSledgeIter, Error> {
-    let ch = get_channel(&query)?;
-    let iter = with_channel(iter, ch, &query);
-
-    let mods = query.as_ref().map(|q| Filters::new(q));
-    let iter2 = match mods {
-        Some(mut mods) => mods.apply(iter),
-        None => iter,
-    };
-
-    Ok(iter2)
-}
-
-fn get_channel_with_db(
-    db: RwLockReadGuard<rocksdb::DB>,
-    query: &Option<Query>,
-) -> Result<Option<Channel>, Error> {
-    if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
-        let res = rocks::get_with_db(&db, "_channel", &channel_id)?
-            .next()
-            .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
-        let c = Channel::new_vec(res.value)?;
-        return Ok(Some(c));
+        iter2.collect::<Vec<_>>()
     }
-
-    Ok(None)
 }
 
-// TODO Try to remove this function, it was moved to main.rs
-fn get_channel(query: &Option<Query>) -> Result<Option<Channel>, Error> {
-    if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
-        let res = rocks::get("_channel", &channel_id)?
-            .next()
-            .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
-        let c = Channel::new_vec(res.value)?;
-        return Ok(Some(c));
-    }
+fn filters_raw(
+    query: Option<Query>,
+    ch: Option<Channel>,
+) -> Box<dyn FnOnce(RawIteratorWrapper) -> Vec<SimplePair>> {
+    box move |iter| -> Vec<SimplePair> {
+        let mut mods = Filters::new(query, ch, None);
+        let iter2 = mods.apply(iter);
 
-    Ok(None)
+        iter2.collect::<Vec<_>>()
+    }
+}
+
+fn filters_single(
+    query: Option<Query>,
+    ch: Option<Channel>,
+) -> Box<dyn FnOnce(SimplePair) -> Vec<SimplePair>> {
+    box move |iter| -> Vec<SimplePair> {
+        let mut mods = Filters::new(query, ch, None);
+        let iter2 = mods.apply(vec![iter].into_iter());
+
+        iter2.collect::<Vec<_>>()
+    }
 }
 
 fn get_id(

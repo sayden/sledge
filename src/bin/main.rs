@@ -2,7 +2,7 @@ extern crate hyper;
 extern crate tokio;
 
 use std::env;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
 use futures_util::future;
@@ -40,16 +40,6 @@ struct CommonRequest<'a> {
     path: SPath<'a>,
     query: Option<Query>,
     body: Body,
-}
-
-struct ReadRequest<'a> {
-    req: CommonRequest<'a>,
-    db: RwLockReadGuard<'a, rocksdb::DB>,
-}
-
-struct WriteRequest<'a> {
-    c: CommonRequest<'a>,
-    db: RwLockWriteGuard<'a, rocksdb::DB>,
 }
 
 pub struct MakeSvc {
@@ -113,18 +103,9 @@ impl Service<Request<Body>> for Svc {
         };
 
         let res: Result<Response<Body>, Error> = match parts.method {
-            Method::GET => {
-                let db = self.db.read().unwrap();
-                self.get_handlers(ReadRequest { req: common, db })
-            }
-            Method::PUT => {
-                let db = self.db.write().unwrap();
-                self.put_handlers(WriteRequest { c: common, db })
-            }
-            Method::POST => {
-                let db = self.db.read().unwrap();
-                self.post_handlers(ReadRequest { req: common, db })
-            }
+            Method::GET => self.get_handlers(common),
+            Method::PUT => self.put_handlers(common),
+            Method::POST => self.post_handlers(common),
             _ => Err(Error::MethodNotFound),
         };
 
@@ -136,18 +117,18 @@ impl Service<Request<Body>> for Svc {
 }
 
 impl Svc {
-    fn put_handlers(&self, req: WriteRequest<'_>) -> Result<Response<Body>, Error> {
-        match (req.c.path.route, req.c.path.cf, req.c.path.id_or_action) {
+    fn put_handlers(&self, req: CommonRequest<'_>) -> Result<Response<Body>, Error> {
+        match (req.path.route, req.path.cf, req.path.id_or_action) {
             // (Some("_db"), Some(cf), Some("_create_secondary_index"))=>Some("_create_secondary_index") => handlers::create(req.query, cf_name).await,
             (Some("_db"), Some(cf), Some("_create_db")) => handlers::create_db(self.db.clone(), cf),
             (Some("_db"), Some(cf), path_id) => {
                 handlers::put(PutRequest {
                     cf,
-                    query: &req.c.query,
+                    query: req.query,
                     path_id,
-                    req: req.c.body,
-                    ch: req.c.ch,
-                    db: req.db,
+                    req: req.body,
+                    ch: req.ch,
+                    db: self.db.clone(),
                 })
                 .and_then(Ok)
                 .or_else(|err| Ok(err.into()))
@@ -156,15 +137,11 @@ impl Svc {
         }
     }
 
-    fn post_handlers(&self, req: ReadRequest<'_>) -> Result<Response<Body>, Error> {
-        match (
-            req.req.path.route,
-            req.req.path.cf,
-            req.req.path.id_or_action,
-        ) {
-            (Some("_sql"), ..) => handlers::sql(self.db.clone(), req.req.query, req.req.body),
+    fn post_handlers(&self, req: CommonRequest<'_>) -> Result<Response<Body>, Error> {
+        match (req.path.route, req.path.cf, req.path.id_or_action) {
+            (Some("_sql"), ..) => handlers::sql(self.db.clone(), req.query, req.body, req.ch),
             (Some("_db"), Some(cf_name), Some(id)) => {
-                handlers::get(req.db, cf_name, id, req.req.query)
+                handlers::get(self.db.clone(), cf_name, id, req.query, req.ch)
                     .and_then(Ok)
                     .or_else(|err| Ok(err.into()))
             }
@@ -172,64 +149,44 @@ impl Svc {
         }
     }
 
-    fn get_handlers(&self, r: ReadRequest<'_>) -> Result<Response<Body>, Error> {
+    fn get_handlers(&self, r: CommonRequest<'_>) -> Result<Response<Body>, Error> {
         match (
-            r.req.path.route,
-            r.req.path.cf,
-            r.req.path.id_or_action,
-            r.req.path.param1,
-            r.req.path.id_or_action2,
-            r.req.path.param2,
+            r.path.route,
+            r.path.cf,
+            r.path.id_or_action,
+            r.path.param1,
+            r.path.id_or_action2,
+            r.path.param2,
         ) {
             (Some("_db"), Some("_all"), ..) => handlers::get_all_dbs(),
             (Some("_db"), Some(cf), Some("_since"), Some(id), Some("_topic"), topic) => {
-                if id.ends_with('*') {
-                    handlers::since_prefix_to_topic(SinceRequest {
-                        query: r.req.query,
-                        id: Some(id.trim_end_matches('*')),
-                        cf,
-                        topic,
-                        ch: r.req.ch,
-                    })
-                    .and_then(Ok)
-                    .or_else(|err| Ok(err.into()))
+                let is_prefix = id.ends_with('*');
+                let since_request = SinceRequest {
+                    query: r.query,
+                    id: if is_prefix {
+                        Some(id.trim_end_matches('*'))
+                    } else {
+                        r.path.param1
+                    },
+                    cf,
+                    topic,
+                    ch: r.ch,
+                    db: self.db.clone(),
+                };
+
+                if is_prefix {
+                    handlers::since_prefix(since_request)
                 } else {
-                    handlers::since_to_topic(SinceRequest {
-                        query: r.req.query,
-                        id: r.req.path.param1,
-                        cf,
-                        topic,
-                        ch: r.req.ch,
-                    })
-                }
-            }
-            (Some("_db"), Some(cf), Some("_since"), Some(id), ..) => {
-                if id.ends_with('*') {
-                    handlers::since_prefix(SinceRequest {
-                        query: r.req.query,
-                        id: Some(id.trim_end_matches('*')),
-                        cf,
-                        topic: None,
-                        ch: r.req.ch,
-                    })
-                    .and_then(Ok)
-                    .or_else(|err| Ok(err.into()))
-                } else {
-                    handlers::since(SinceRequest {
-                        query: r.req.query,
-                        id: r.req.path.param1,
-                        cf,
-                        topic: None,
-                        ch: r.req.ch,
-                    })
+                    handlers::since(since_request)
                 }
             }
             (Some("_db"), Some(cf_name), Some(id), ..) => {
                 match id {
-                    "_all" => handlers::all(r.req.query, cf_name),
-                    "_all_reverse" => handlers::all_reverse(r.req.query, cf_name),
+                    "_all" | "_all_reverse" => {
+                        handlers::all(self.db.clone(), r.query, cf_name, r.ch)
+                    }
                     id => {
-                        handlers::get(r.db, cf_name, id, r.req.query)
+                        handlers::get(self.db.clone(), cf_name, id, r.query, r.ch)
                             .and_then(Ok)
                             .or_else(|err| Ok(err.into()))
                     }
@@ -243,10 +200,17 @@ impl Svc {
         let inner = self.db.clone();
 
         if let Some(channel_id) = query.as_ref().and_then(|q| q.channel.as_ref()) {
-            let res = rocks::get_with_db(&inner.read().unwrap(), "_channel", &channel_id)?
-                .next()
+            let res = rocks::get(inner, "_channel", &channel_id, |x| vec![x])?
+                .pop()
                 .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
-            let c = Channel::new_vec(res.value)?;
+
+            let c = Channel::new_vec(
+                res.value,
+                query
+                    .as_ref()
+                    .and_then(|q| q.omit_errors)
+                    .unwrap_or_default(),
+            )?;
             return Ok(Some(c));
         }
 

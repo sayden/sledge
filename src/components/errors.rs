@@ -10,6 +10,12 @@ use crate::server::responses::unknown_error;
 pub enum Error {
     #[error("error parsing HTTP body: {0}")]
     BodyParsingError(#[from] hyper::Error),
+    
+    #[error("error {0}")]
+    Multi(String),
+
+    #[error("error applying filters")]
+    FilterError,
 
     #[error("id with key '{0}' was not found in the incoming json")]
     IdNotFoundInJSON(String),

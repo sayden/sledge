@@ -1,15 +1,13 @@
 use std::env;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock};
 
-use bytes::Bytes;
-use rocksdb::{DBIterator, IteratorMode, Options};
+use rocksdb::{DBIterator, Direction, IteratorMode, Options};
 
 use lazy_static::lazy_static;
 
 use crate::components::errors::Error;
-use crate::components::iterator::RawIteratorWrapper;
+use crate::components::raw_iterator::RawIteratorWrapper;
 use crate::components::simple_pair::SimplePair;
-use crate::server::query::Query;
 
 pub trait SledgeIterator = Iterator<Item = SimplePair> + Send + Sync;
 
@@ -21,70 +19,63 @@ lazy_static! {
     };
 }
 
-pub fn range_all(
-    query: &Option<Query>,
-    _id: Option<String>,
+pub fn rangef<F>(
+    db: Arc<RwLock<rocksdb::DB>>,
+    is_reverse: bool,
+    id: Option<&str>,
     cf_name: &str,
-) -> Result<impl SledgeIterator, Error> {
-    let direction = get_range_direction(query);
-    let mode = match direction {
-        rocksdb::Direction::Forward => IteratorMode::Start,
-        rocksdb::Direction::Reverse => IteratorMode::End,
-    };
+    f: F,
+) -> Result<Vec<SimplePair>, Error>
+where
+    F: FnOnce(DBIterator) -> Vec<SimplePair>,
+{
+    let mode = get_range_mode(is_reverse, id);
 
-    let cf = DB
+    let db = db.read().unwrap();
+
+    let cf = db
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
-    let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
+    let source_iter = db.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
-    let sledge_iter = source_iter.map(SimplePair::new_boxed);
+    let sledge_iter = f(source_iter);
 
     Ok(sledge_iter)
 }
 
-pub fn range_all_reverse(cf_name: &str) -> Result<impl SledgeIterator, Error> {
-    let cf = DB
+pub fn range_prefix<F>(
+    db: Arc<RwLock<rocksdb::DB>>,
+    id: &str,
+    cf_name: &str,
+    f: F,
+) -> Result<Vec<SimplePair>, Error>
+where
+    F: FnOnce(RawIteratorWrapper) -> Vec<SimplePair>,
+{
+    let db = db.read().unwrap();
+
+    let cf = db
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
-    let source_iter: DBIterator = DB
-        .iterator_cf(cf, IteratorMode::End)
-        .map_err(Error::RocksDB)?;
-    let sledge_iter = source_iter.map(SimplePair::new_boxed);
-
-    Ok(sledge_iter)
-}
-
-pub fn range(query: &Option<Query>, id: &str, cf_name: &str) -> Result<impl SledgeIterator, Error> {
-    let direction = get_range_direction(query);
-    let mode = IteratorMode::From(id.as_bytes(), direction);
-
-    let cf = DB
-        .cf_handle(cf_name)
-        .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
-    let source_iter: DBIterator = DB.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
-
-    let sledge_iter = source_iter.map(SimplePair::new_boxed);
-
-    Ok(sledge_iter)
-}
-
-pub fn range_prefix(id: &str, cf_name: &str) -> Result<impl SledgeIterator, Error> {
-    let cf = DB
-        .cf_handle(cf_name)
-        .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
-    let mut iter = DB.raw_iterator_cf(cf).map_err(Error::RocksDB)?;
+    let mut iter = db.raw_iterator_cf(cf).map_err(Error::RocksDB)?;
     iter.seek(id);
 
     let ret_iter = RawIteratorWrapper { inner: iter };
-
-    Ok(ret_iter)
+    let res = f(ret_iter);
+    Ok(res)
 }
 
-pub fn get_with_db(
-    db: &RwLockReadGuard<rocksdb::DB>,
+pub fn get<F>(
+    db: Arc<RwLock<rocksdb::DB>>,
     cf: &str,
     id: &str,
-) -> Result<impl SledgeIterator, Error> {
+    f: F,
+) -> Result<Vec<SimplePair>, Error>
+where
+    F: FnOnce(SimplePair) -> Vec<SimplePair>,
+{
+    let db = db.read().unwrap();
+
     let cf = db
         .cf_handle(&cf)
         .ok_or_else(|| Error::CFNotFound(cf.to_string()))?;
@@ -93,38 +84,21 @@ pub fn get_with_db(
         .get_cf(cf, id)
         .map_err(Error::RocksDB)?
         .ok_or_else(|| Error::NotFound(id.to_string()))
-        .map(|v| vec![SimplePair::new_str_vec(id, v)].into_iter())?;
+        .map(|v| SimplePair::new_str_vec(id, v))?;
 
-    Ok(res)
+    let result = f(res);
+
+    Ok(result)
 }
 
-pub fn get(cf: &str, id: &str) -> Result<impl SledgeIterator, Error> {
+pub fn put(cf_name: &str, k: Vec<u8>, v: Vec<u8>) -> Result<(), Error> {
     let cf = DB
-        .cf_handle(&cf)
-        .ok_or_else(|| Error::CFNotFound(cf.to_string()))?;
-
-    let res = DB
-        .get_cf(cf, id)
-        .map_err(Error::RocksDB)?
-        .ok_or_else(|| Error::NotFound(id.to_string()))
-        .map(|v| vec![SimplePair::new_str_vec(id, v)].into_iter())?;
-
-    Ok(res)
-}
-
-pub fn put(
-    db: RwLockWriteGuard<rocksdb::DB>,
-    cf_name: &str,
-    k: &str,
-    v: Bytes,
-) -> Result<(), Error> {
-    let cf = db
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
 
     let mut res: rocksdb::FlushOptions = rocksdb::FlushOptions::default();
     res.set_wait(true);
-    db.put_cf(cf, k, v)
+    DB.put_cf(cf, k, v)
         .and(DB.flush_opt(&res))
         .or_else(|err| Err(Error::Put(err.to_string())))
 }
@@ -165,14 +139,24 @@ pub fn new_storage(path: String) -> rocksdb::DB {
     }
 }
 
-fn get_range_direction(query: &Option<Query>) -> rocksdb::Direction {
-    if let Some(q) = query {
-        if let Some(is_reverse) = q.direction_reverse {
-            if is_reverse {
-                return rocksdb::Direction::Reverse;
-            };
+fn get_range_mode(is_reverse: bool, id: Option<&str>) -> rocksdb::IteratorMode {
+    match id {
+        Some(id) => {
+            IteratorMode::From(
+                id.as_ref(),
+                if is_reverse {
+                    Direction::Reverse
+                } else {
+                    Direction::Forward
+                },
+            )
         }
-    };
-
-    rocksdb::Direction::Forward
+        None => {
+            if is_reverse {
+                IteratorMode::End
+            } else {
+                IteratorMode::Start
+            }
+        }
+    }
 }

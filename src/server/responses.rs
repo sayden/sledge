@@ -1,65 +1,43 @@
-use bytes::Bytes;
+use futures::executor::block_on;
 use hyper::Body;
 use hyper::Response;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::components::errors::Error;
-use crate::components::iterator::BoxedSledgeIter;
-use crate::components::simple_pair::{simple_pair_to_json, KvUTF8};
-use crate::server::handlers::{BytesResultIterator, BytesResultStream};
-use crate::server::query::Query;
+use crate::components::simple_pair::{KvUTF8, SimplePair};
+use crate::server::handlers::new_read_ok_iter_with_db;
 use crate::server::reply::Reply;
-use futures::executor::block_on;
 
-pub fn new_read_ok(res: &[u8]) -> Result<Response<Body>, Error> {
-    let data: Box<Value> = box serde_json::from_slice(res).map_err(Error::SerdeError)?;
-    let reply = Reply::ok(Some(data));
-    Ok(reply.into())
-}
-
-pub fn new_read_ok_iter(iter: BoxedSledgeIter) -> Result<Response<Body>, Error> {
-    let data = box serde_json::to_value(
-        iter.flat_map(|x| simple_pair_to_json(x, true))
-            .collect::<Vec<Value>>(),
-    )
-    .map_err(Error::SerdeError)?;
-
-    let reply = Reply::ok(Some(data));
-
-    Ok(reply.into())
-}
-
-pub fn get_iterating_response(
-    iter: BoxedSledgeIter,
-    query: Option<Query>,
-) -> Result<Response<Body>, Error> {
-    let include_id = query.and_then(|q| q.include_ids).unwrap_or_else(|| false);
-
-    let thread_iter: Box<BytesResultIterator> = box iter
-        .flat_map(move |x| simple_pair_to_json(x, include_id))
-        .flat_map(|spj| {
-            serde_json::to_string(&spj)
-                .map_err(|err| {
-                    log::warn!(
-                        "error trying to get json from simpleJSON: {}",
-                        err.to_string()
-                    )
-                })
-                .ok()
-        })
-        .map(|s| format!("{}\n", s))
-        .map(|x| Ok(Bytes::from(x)));
-
-    let stream: BytesResultStream = box futures::stream::iter(thread_iter);
-
-    http::Response::builder()
-        .header("Content-Type", "application/octet-stream")
-        .body(Body::from(stream))
-        .map_err(Error::GeneratingResponse)
-}
+// pub fn get_iterating_response(
+//     iter: BoxedSledgeIter,
+//     query: Option<Query>,
+// ) -> Result<Response<Body>, Error> {
+//     let include_id = query.and_then(|q| q.include_ids).unwrap_or_else(|| false);
+//
+//     let thread_iter: Box<BytesResultIterator> = box iter
+//         .flat_map(move |x| simple_pair_to_json(x, include_id))
+//         .flat_map(|spj| {
+//             serde_json::to_string(&spj)
+//                 .map_err(|err| {
+//                     log::warn!(
+//                         "error trying to get json from simpleJSON: {}",
+//                         err.to_string()
+//                     )
+//                 })
+//                 .ok()
+//         })
+//         .map(|s| format!("{}\n", s))
+//         .map(|x| Ok(Bytes::from(x)));
+//
+//     let stream: BytesResultStream = box futures::stream::iter(thread_iter);
+//
+//     http::Response::builder()
+//         .header("Content-Type", "application/octet-stream")
+//         .body(Body::from(stream))
+//         .map_err(Error::GeneratingResponse)
+// }
 
 #[derive(Serialize, Deserialize)]
 struct TotalRecords {
@@ -67,11 +45,11 @@ struct TotalRecords {
 }
 
 pub fn get_iterating_response_with_topic(
-    iter: BoxedSledgeIter,
+    data: Vec<SimplePair>,
     topic_name: Option<&str>,
 ) -> Result<Response<Body>, Error> {
     if topic_name.is_none() {
-        return Err(Error::WrongQuery);
+        return new_read_ok_iter_with_db(data);
     }
 
     let topic = topic_name.unwrap();
@@ -82,7 +60,8 @@ pub fn get_iterating_response_with_topic(
         .create()
         .map_err(Error::KafkaError)?;
 
-    let thread_iter = iter
+    let thread_iter = data
+        .into_iter()
         .filter_map(From::from)
         .map(|v: KvUTF8| producer.send(FutureRecord::to(topic).payload(&v.value).key(&v.id), 0));
 
