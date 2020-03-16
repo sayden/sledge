@@ -26,8 +26,8 @@ use crate::server::reply::Reply;
 use crate::server::responses::get_iterating_response_with_topic;
 
 pub type BytesResult = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
-pub type BytesResultStream = Box<dyn Stream<Item = BytesResult> + Send + Sync>;
-pub type BytesResultIterator = dyn Iterator<Item = BytesResult> + Send + Sync;
+pub type BytesResultStream = Box<dyn Stream<Item=BytesResult> + Send + Sync>;
+pub type BytesResultIterator = dyn Iterator<Item=BytesResult> + Send + Sync;
 
 // struct IndexedValue {
 //     key: String,
@@ -82,6 +82,24 @@ pub type BytesResultIterator = dyn Iterator<Item = BytesResult> + Send + Sync;
 //         .into())
 // }
 
+pub struct AppRequest<'a> {
+    pub ch: Option<Channel>,
+    pub path: SPath<'a>,
+    pub query: Option<Query>,
+    pub body: Body,
+}
+
+pub struct SPath<'a> {
+    pub route: Option<&'a str>,
+    pub cf: Option<&'a str>,
+
+    pub id_or_action: Option<&'a str>,
+    pub param1: Option<&'a str>,
+
+    pub id_or_action2: Option<&'a str>,
+    pub param2: Option<&'a str>,
+}
+
 pub struct SinceRequest<'a> {
     pub query: Option<Query>,
     pub id: Option<&'a str>,
@@ -89,6 +107,29 @@ pub struct SinceRequest<'a> {
     pub topic: Option<&'a str>,
     pub ch: Option<Channel>,
     pub db: Arc<RwLock<rocksdb::DB>>,
+    is_prefix: bool,
+}
+
+impl SinceRequest<'a> {
+    pub fn new(
+        db: Arc<RwLock<rocksdb::DB>>, req: AppRequest<'a>, id: &'a str, cf: &'a str, topic: Option<&'a str>) -> Self {
+        let is_prefix = id.ends_with('*');
+        let id = if is_prefix {
+            Some(id.trim_end_matches('*'))
+        } else {
+            req.path.param1
+        };
+
+        SinceRequest {
+            query: req.query,
+            id,
+            cf,
+            topic,
+            ch: req.ch,
+            db,
+            is_prefix
+        }
+    }
 }
 
 pub struct PutRequest<'a> {
@@ -100,24 +141,42 @@ pub struct PutRequest<'a> {
     pub db: Arc<RwLock<rocksdb::DB>>,
 }
 
-pub fn since_prefix(r: SinceRequest) -> Result<Response<Body>, Error> {
-    let data = rocks::range_prefix(r.db, r.id.unwrap(), r.cf, filters_raw(r.query, r.ch))?;
-
-    get_iterating_response_with_topic(data, r.topic)
+impl PutRequest<'a> {
+    pub fn new(
+        db: Arc<RwLock<rocksdb::DB>>,
+        req: AppRequest,
+        cf: &'a str,
+        path_id: Option<&'a str>,
+    ) -> Self {
+        PutRequest {
+            cf,
+            query: req.query,
+            path_id,
+            req: req.body,
+            ch: req.ch,
+            db,
+        }
+    }
 }
 
+
 pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
-    let id = get_id(&r.query, r.id, None)?;
+    if r.is_prefix {
+        let data = rocks::range_prefix(r.db, r.id.unwrap(), r.cf, filters_raw(r.query, r.ch))?;
+        get_iterating_response_with_topic(data, r.topic)
+    } else {
+        let id = get_id(&r.query, r.id, None)?;
 
-    let data = rocks::range(
-        r.db,
-        is_reverse(&r.query),
-        Some(id.as_ref()),
-        r.cf,
-        filters(r.query, r.ch),
-    )?;
+        let data = rocks::range(
+            r.db,
+            is_reverse(&r.query),
+            Some(id.as_ref()),
+            r.cf,
+            filters(r.query, r.ch),
+        )?;
 
-    get_iterating_response_with_topic(data, r.topic)
+        get_iterating_response_with_topic(data, r.topic)
+    }
 }
 
 pub fn all(
@@ -237,7 +296,7 @@ pub fn new_read_ok_iter_with_db(v: Vec<SimplePair>) -> Result<Response<Body>, Er
             .flat_map(|x| simple_pair_to_json(x, true))
             .collect::<Vec<Value>>(),
     )
-    .map_err(Error::SerdeError)?;
+        .map_err(Error::SerdeError)?;
 
     let reply = Reply::ok(Some(data));
 
