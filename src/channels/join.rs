@@ -20,7 +20,7 @@ impl Mutator for Join {
         match &self.field {
             Value::String(s) => {
                 let value = v.get(s.as_str())
-                    .ok_or(Error::FieldNotFoundInJSON(self.field.to_string()))?;
+                    .ok_or_else(|| Error::FieldNotFoundInJSON(self.field.to_string()))?;
 
                 let array = match value {
                     Value::Array(ar) => ar,
@@ -44,7 +44,7 @@ impl Mutator for Join {
             Value::Array(ar) => {
                 let mut out: Vec<String> = Vec::new();
                 let new_field = self.new_field.as_ref()
-                    .ok_or(Error::RequiredFieldNotFound("new_field".to_string()))?;
+                    .ok_or_else(|| Error::RequiredFieldNotFound("new_field".to_string()))?;
 
                 for value in ar {
                     let field_name = match value {
@@ -53,7 +53,7 @@ impl Mutator for Join {
                     };
 
                     let field = v.get(field_name.as_str())
-                        .ok_or(Error::FieldNotFoundInJSON(field_name.to_string()))?;
+                        .ok_or_else(|| Error::FieldNotFoundInJSON(field_name.to_string()))?;
 
                     match field {
                         Value::String(s) => out.push(s.clone()),
@@ -66,7 +66,7 @@ impl Mutator for Join {
 
                 Ok(())
             }
-            _ => return Error::JoinErrorTypeNotRecognized.into()
+            _ => Error::JoinErrorTypeNotRecognized.into()
         }
     }
 

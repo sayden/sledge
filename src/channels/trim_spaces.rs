@@ -1,10 +1,10 @@
 use crate::channels::mutators::Mutator;
 use crate::channels::mutators::*;
 
+use crate::channels::error::Error;
+use serde::export::Formatter;
 use serde_json::{Map, Value};
 use std::fmt;
-use serde::export::Formatter;
-use crate::channels::error::Error;
 
 #[derive(Debug)]
 pub struct TrimSpaces {
@@ -13,12 +13,13 @@ pub struct TrimSpaces {
 
 impl Mutator for TrimSpaces {
     fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
-        let value = v.get(&self.modifier.field)
-            .ok_or(Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
+        let value = v
+            .get(&self.modifier.field)
+            .ok_or_else(|| Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
 
         let s: &String = match value {
             Value::String(x) => x,
-            _ => return Error::NotString(self.modifier.field.to_string()).into()
+            _ => return Error::NotString(self.modifier.field.to_string()).into(),
         };
 
         v[self.modifier.field.as_str()] = Value::from(s.trim());
@@ -26,9 +27,7 @@ impl Mutator for TrimSpaces {
         Ok(())
     }
 
-    fn mutator_type(&self) -> MutatorType {
-        MutatorType::TrimSpace
-    }
+    fn mutator_type(&self) -> MutatorType { MutatorType::TrimSpace }
 }
 
 impl fmt::Display for TrimSpaces {

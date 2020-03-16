@@ -1,7 +1,7 @@
 use std::env;
 use std::sync::{Arc, RwLock};
 
-use rocksdb::{DBIterator, Direction, IteratorMode, Options};
+use rocksdb::{DBIterator, Direction, IteratorMode, Options, DB};
 
 use crate::components::errors::Error;
 use crate::components::raw_iterator::RawIteratorWrapper;
@@ -10,7 +10,7 @@ use crate::components::simple_pair::SimplePair;
 pub trait SledgeIterator = Iterator<Item = SimplePair> + Send + Sync;
 
 pub fn range<F>(
-    db: Arc<RwLock<rocksdb::DB>>,
+    db: Arc<RwLock<DB>>,
     is_reverse: bool,
     id: Option<&str>,
     cf_name: &str,
@@ -33,8 +33,23 @@ where
     Ok(sledge_iter)
 }
 
+pub fn try_streaming<F, R>(db: Arc<RwLock<DB>>, f: F) -> Result<R, Error>
+where
+    F: FnOnce(DBIterator) -> R,
+{
+    let mode = get_range_mode(false, None);
+    let db = db.read().unwrap();
+    let cf = db
+        .cf_handle("test_db")
+        .ok_or_else(|| Error::CannotRetrieveCF("test_db".to_string()))?;
+
+    let source_iter = db.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
+
+    Ok(f(source_iter))
+}
+
 pub fn range_prefix<F>(
-    db: Arc<RwLock<rocksdb::DB>>,
+    db: Arc<RwLock<DB>>,
     id: &str,
     cf_name: &str,
     f: F,
@@ -55,12 +70,7 @@ where
     Ok(res)
 }
 
-pub fn get<F>(
-    db: Arc<RwLock<rocksdb::DB>>,
-    cf: &str,
-    id: &str,
-    f: F,
-) -> Result<Vec<SimplePair>, Error>
+pub fn get<F>(db: Arc<RwLock<DB>>, cf: &str, id: &str, f: F) -> Result<Vec<SimplePair>, Error>
 where
     F: FnOnce(SimplePair) -> Vec<SimplePair>,
 {
@@ -81,12 +91,7 @@ where
     Ok(result)
 }
 
-pub fn put(
-    db: Arc<RwLock<rocksdb::DB>>,
-    cf_name: &str,
-    k: Vec<u8>,
-    v: Vec<u8>,
-) -> Result<(), Error> {
+pub fn put(db: Arc<RwLock<DB>>, cf_name: &str, k: Vec<u8>, v: Vec<u8>) -> Result<(), Error> {
     let db = db.write().unwrap();
 
     let cf = db
@@ -100,7 +105,7 @@ pub fn put(
         .or_else(|err| Err(Error::Put(err.to_string())))
 }
 
-pub fn create_cf(db: Arc<RwLock<rocksdb::DB>>, cf: &str) -> Result<(), Error> {
+pub fn create_cf(db: Arc<RwLock<DB>>, cf: &str) -> Result<(), Error> {
     let mut inner = db.write().unwrap();
     inner
         .create_cf(cf, &rocksdb::Options::default())
@@ -111,27 +116,27 @@ pub fn create_cf(db: Arc<RwLock<rocksdb::DB>>, cf: &str) -> Result<(), Error> {
 }
 
 pub fn get_all_dbs() -> Result<Vec<String>, Error> {
-    rocksdb::DB::list_cf(
+    DB::list_cf(
         &rocksdb::Options::default(),
         env::var("FEEDB_PATH").unwrap_or_else(|_| "/tmp/storage".to_string()),
     )
     .map_err(Error::RocksDB)
 }
 
-pub fn new_storage(path: String) -> rocksdb::DB {
+pub fn new_storage(path: String) -> DB {
     let mut opts = Options::default();
     opts.create_if_missing(true);
 
-    match rocksdb::DB::list_cf(&opts, path.clone()) {
+    match DB::list_cf(&opts, path.clone()) {
         Ok(cfs) => {
-            match rocksdb::DB::open_cf(&opts, path, cfs) {
+            match DB::open_cf(&opts, path, cfs) {
                 Ok(db) => db,
                 Err(err) => panic!(err),
             }
         }
         Err(e) => {
             log::warn!("{}", e.to_string());
-            rocksdb::DB::open(&opts, path).unwrap()
+            DB::open(&opts, path).unwrap()
         }
     }
 }

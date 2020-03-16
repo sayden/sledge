@@ -4,8 +4,8 @@ use serde::export::Formatter;
 use serde_json::{Map, Value};
 
 use crate::channels::error::Error;
-use crate::channels::mutators::*;
 use crate::channels::mutators::Mutator;
+use crate::channels::mutators::*;
 
 pub struct UpperLowercase {
     pub modifier: Mutation,
@@ -14,12 +14,14 @@ pub struct UpperLowercase {
 
 impl Mutator for UpperLowercase {
     fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
-        let value = v.get(&self.modifier.field)
-            .ok_or(Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
+        let value = v
+            .get(&self.modifier.field)
+            .ok_or_else(|| Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
 
         let result = match value {
             Value::Array(ar) => {
-                let new_value = ar.iter()
+                let new_value = ar
+                    .iter()
                     .filter_map(|x| {
                         match x {
                             Value::String(s) => Some(s.to_lowercase()),
@@ -39,9 +41,7 @@ impl Mutator for UpperLowercase {
         Ok(())
     }
 
-    fn mutator_type(&self) -> MutatorType {
-        MutatorType::Uppercase
-    }
+    fn mutator_type(&self) -> MutatorType { MutatorType::Uppercase }
 }
 
 impl fmt::Display for UpperLowercase {

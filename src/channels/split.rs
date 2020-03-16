@@ -4,8 +4,8 @@ use serde::export::Formatter;
 use serde_json::{Map, Value};
 
 use crate::channels::error::Error;
-use crate::channels::mutators::*;
 use crate::channels::mutators::Mutator;
+use crate::channels::mutators::*;
 
 #[derive(Debug)]
 pub struct Split {
@@ -15,12 +15,13 @@ pub struct Split {
 
 impl Mutator for Split {
     fn mutate(&self, v: &mut Map<String, Value>) -> Result<(), Error> {
-        let value = v.get(&self.modifier.field)
-            .ok_or(Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
+        let value = v
+            .get(&self.modifier.field)
+            .ok_or_else(|| Error::FieldNotFoundInJSON(self.modifier.field.to_string()))?;
 
         let s = match value {
             Value::String(ar) => Ok(ar),
-            _ => Err(Error::NotString(self.modifier.field.to_string()))
+            _ => Err(Error::NotString(self.modifier.field.to_string())),
         }?;
 
         let separator = self.separator.clone();
@@ -35,13 +36,15 @@ impl Mutator for Split {
         Ok(())
     }
 
-    fn mutator_type(&self) -> MutatorType {
-        MutatorType::Split
-    }
+    fn mutator_type(&self) -> MutatorType { MutatorType::Split }
 }
 
 impl fmt::Display for Split {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "Split field: '{}' by '{}'", self.modifier.field, self.separator)
+        write!(
+            f,
+            "Split field: '{}' by '{}'",
+            self.modifier.field, self.separator
+        )
     }
 }

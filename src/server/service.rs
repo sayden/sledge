@@ -89,6 +89,7 @@ impl Svc {
             (Some("_db"), Some(cf_name), Some(id)) => {
                 handlers::get(self.db.clone(), cf_name, id, r.query, r.ch)
             }
+            (Some("_test"), ..) => handlers::try_streaming(self.db.clone()),
 
             _ => Err(Error::WrongQuery),
         }

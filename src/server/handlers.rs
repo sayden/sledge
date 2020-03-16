@@ -14,7 +14,6 @@ use uuid::Uuid;
 
 use crate::channels::channel::Channel;
 use crate::components::errors::Error;
-use crate::components::raw_iterator::RawIteratorWrapper;
 use crate::components::rocks;
 use crate::components::rocks::SledgeIterator;
 use crate::components::simple_pair::{simple_pair_to_json, SimplePair};
@@ -161,8 +160,11 @@ impl PutRequest<'a> {
 
 pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
     if r.is_prefix {
-        let data = rocks::range_prefix(r.db, r.id.unwrap(), r.cf, filters_raw(r.query, r.ch))?;
-        get_iterating_response_with_topic(data, r.topic)
+        let topic = r.topic;
+        let data = rocks::range_prefix(r.db.clone(), r.id.unwrap(), r.cf, |iter| {
+            apply_filters(r.query, r.ch, iter)
+        })?;
+        get_iterating_response_with_topic(data, topic)
     } else {
         let id = get_id(&r.query, r.id, None)?;
 
@@ -171,11 +173,16 @@ pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
             is_reverse(&r.query),
             Some(id.as_ref()),
             r.cf,
-            filters(r.query, r.ch),
+            dbiterator_filters(r.query, r.ch),
         )?;
 
         get_iterating_response_with_topic(data, r.topic)
     }
+}
+
+pub fn try_streaming(db: Arc<RwLock<rocksdb::DB>>) -> Result<Response<Body>, Error> {
+    let res = rocks::try_streaming(db, dbiterator_filters(None, None))?;
+    new_read_ok_iter_with_db(res)
 }
 
 pub fn all(
@@ -190,7 +197,7 @@ pub fn all(
         is_reverse(&query),
         Some(id.as_str()),
         cf,
-        filters(query, ch),
+        dbiterator_filters(query, ch),
     )?;
     new_read_ok_iter_with_db(result)
 }
@@ -249,7 +256,7 @@ pub fn sql(
         is_reverse(&query),
         None,
         from.as_str(),
-        filters(query, ch),
+        dbiterator_filters(query, ch),
     )?;
     new_read_ok_iter_with_db(result)
 }
@@ -261,7 +268,10 @@ pub fn get(
     query: Option<Query>,
     ch: Option<Channel>,
 ) -> Result<Response<Body>, Error> {
-    let result = rocks::get(db, &cf, &id, filters_single(query, ch))?;
+    let result = rocks::get(db, &cf, &id, |i| {
+        let iter = vec![i].into_iter();
+        apply_filters(query, ch, iter)
+    })?;
     new_read_ok_iter_with_db(result)
 }
 
@@ -302,41 +312,24 @@ pub fn new_read_ok_iter_with_db(v: Vec<SimplePair>) -> Result<Response<Body>, Er
     Ok(reply.into())
 }
 
-fn filters(
+fn dbiterator_filters(
     query: Option<Query>,
     ch: Option<Channel>,
 ) -> Box<dyn FnOnce(DBIterator) -> Vec<SimplePair>> {
     box move |iter| -> Vec<SimplePair> {
         let sledge_iter = iter.map(SimplePair::new_boxed);
-        let mut mods = Filters::new(query, ch, None);
-        let iter2 = mods.apply(sledge_iter);
-
-        iter2.collect::<Vec<_>>()
+        apply_filters(query, ch, sledge_iter)
     }
 }
 
-fn filters_raw(
+fn apply_filters(
     query: Option<Query>,
     ch: Option<Channel>,
-) -> Box<dyn FnOnce(RawIteratorWrapper) -> Vec<SimplePair>> {
-    box move |iter| -> Vec<SimplePair> {
-        let mut mods = Filters::new(query, ch, None);
-        let iter2 = mods.apply(iter);
-
-        iter2.collect::<Vec<_>>()
-    }
-}
-
-fn filters_single(
-    query: Option<Query>,
-    ch: Option<Channel>,
-) -> Box<dyn FnOnce(SimplePair) -> Vec<SimplePair>> {
-    box move |iter| -> Vec<SimplePair> {
-        let mut mods = Filters::new(query, ch, None);
-        let iter2 = mods.apply(vec![iter].into_iter());
-
-        iter2.collect::<Vec<_>>()
-    }
+    iter: impl Iterator<Item = SimplePair> + Send + Sync,
+) -> Vec<SimplePair> {
+    let mut mods = Filters::new(query, ch, None);
+    let iter2 = mods.apply(iter);
+    iter2.collect()
 }
 
 fn get_id(

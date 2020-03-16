@@ -7,6 +7,7 @@
 * [*] Range of docs in db since an id`/_db/{db}/_since/{id}`
 * [*] Docs prefixed with `/_db/{db}/{id}*`
 * [*] Get list of all dbs
+* [ ] Streaming results
 
 ### Options
 * [*] Include id in response
@@ -56,5 +57,5 @@
 * [ ] Mutators using WebAssembly attached dynamically?
 * [ ] DB Statistics
 * [ ] Keep alive for range queries
-* [ ] Tail -f queries
+* [ ] Tail -f read queries
 * [ ] UI

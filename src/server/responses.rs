@@ -11,13 +11,13 @@ use crate::server::handlers::new_read_ok_iter_with_db;
 use crate::server::reply::Reply;
 
 // pub fn get_iterating_response(
-//     iter: BoxedSledgeIter,
+//     iter: DBIterator,
 //     query: Option<Query>,
 // ) -> Result<Response<Body>, Error> {
 //     let include_id = query.and_then(|q| q.include_ids).unwrap_or_else(|| false);
 //
-//     let thread_iter: Box<BytesResultIterator> = box iter
-//         .flat_map(move |x| simple_pair_to_json(x, include_id))
+//     let thread_iter = box iter
+//         .flat_map(move |x| simple_pair_to_json(SimplePair::new_boxed(x), include_id))
 //         .flat_map(|spj| {
 //             serde_json::to_string(&spj)
 //                 .map_err(|err| {
@@ -31,7 +31,9 @@ use crate::server::reply::Reply;
 //         .map(|s| format!("{}\n", s))
 //         .map(|x| Ok(Bytes::from(x)));
 //
-//     let stream: BytesResultStream = box futures::stream::iter(thread_iter);
+//     let stream: Box<
+//         dyn Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + Sync,
+//     > = box futures::stream::iter(thread_iter);
 //
 //     http::Response::builder()
 //         .header("Content-Type", "application/octet-stream")
