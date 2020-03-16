@@ -109,7 +109,7 @@ pub fn since_prefix(r: SinceRequest) -> Result<Response<Body>, Error> {
 pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
     let id = get_id(&r.query, r.id, None)?;
 
-    let data = rocks::rangef(
+    let data = rocks::range(
         r.db,
         is_reverse(&r.query),
         Some(id.as_ref()),
@@ -127,7 +127,7 @@ pub fn all(
     ch: Option<Channel>,
 ) -> Result<Response<Body>, Error> {
     let id = get_id(&query, None, None)?;
-    let result = rocks::rangef(
+    let result = rocks::range(
         db,
         is_reverse(&query),
         Some(id.as_str()),
@@ -148,9 +148,11 @@ pub fn put(r: PutRequest) -> Result<Response<Body>, Error> {
         value: value.to_vec(),
     };
     let iter = filters.apply(vec![sp].into_iter());
+    let db = r.db;
+
     let errors = iter
-        .filter_map(move |v| {
-            let res = rocks::put(cf, v.id, v.value);
+        .filter_map(|v| {
+            let res = rocks::put(db.clone(), cf, v.id, v.value);
             if let Err(e) = res {
                 Some(e.to_string())
             } else {
@@ -184,7 +186,7 @@ pub fn sql(
 
     let from = sql::utils::get_from(&ast).ok_or_else(|| Error::CFNotFound("".to_string()))?;
 
-    let result = rocks::rangef(
+    let result = rocks::range(
         db,
         is_reverse(&query),
         None,

@@ -3,23 +3,13 @@ use std::sync::{Arc, RwLock};
 
 use rocksdb::{DBIterator, Direction, IteratorMode, Options};
 
-use lazy_static::lazy_static;
-
 use crate::components::errors::Error;
 use crate::components::raw_iterator::RawIteratorWrapper;
 use crate::components::simple_pair::SimplePair;
 
 pub trait SledgeIterator = Iterator<Item = SimplePair> + Send + Sync;
 
-//TODO Remove this static use and initialization of db
-lazy_static! {
-    static ref DB: rocksdb::DB = {
-        let maybe_path = env::var("FEEDB_PATH").unwrap_or_else(|_| "/tmp/storage".to_string());
-        new_storage(maybe_path)
-    };
-}
-
-pub fn rangef<F>(
+pub fn range<F>(
     db: Arc<RwLock<rocksdb::DB>>,
     is_reverse: bool,
     id: Option<&str>,
@@ -91,15 +81,22 @@ where
     Ok(result)
 }
 
-pub fn put(cf_name: &str, k: Vec<u8>, v: Vec<u8>) -> Result<(), Error> {
-    let cf = DB
+pub fn put(
+    db: Arc<RwLock<rocksdb::DB>>,
+    cf_name: &str,
+    k: Vec<u8>,
+    v: Vec<u8>,
+) -> Result<(), Error> {
+    let db = db.write().unwrap();
+
+    let cf = db
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CannotRetrieveCF(cf_name.to_string()))?;
 
     let mut res: rocksdb::FlushOptions = rocksdb::FlushOptions::default();
     res.set_wait(true);
-    DB.put_cf(cf, k, v)
-        .and(DB.flush_opt(&res))
+    db.put_cf(cf, k, v)
+        .and(db.flush_opt(&res))
         .or_else(|err| Err(Error::Put(err.to_string())))
 }
 
