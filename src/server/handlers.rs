@@ -1,4 +1,3 @@
-use std::str::from_utf8;
 use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
@@ -106,10 +105,7 @@ pub struct SinceRequest<'a> {
 
 impl SinceRequest<'a> {
     pub fn new(
-        db: Arc<RwLock<rocksdb::DB>>,
-        req: AppRequest<'a>,
-        id: &'a str,
-        cf: &'a str,
+        db: Arc<RwLock<rocksdb::DB>>, req: AppRequest<'a>, id: &'a str, cf: &'a str,
         topic: Option<&'a str>,
     ) -> Self {
         let is_prefix = id.ends_with('*');
@@ -131,6 +127,21 @@ impl SinceRequest<'a> {
     }
 }
 
+pub struct SqlRequest {
+    db: Arc<RwLock<rocksdb::DB>>,
+    query: Option<Query>,
+    req: Body,
+    ch: Option<Channel>,
+}
+
+impl SqlRequest {
+    pub fn new(
+        db: Arc<RwLock<rocksdb::DB>>, query: Option<Query>, req: Body, ch: Option<Channel>,
+    ) -> Self {
+        SqlRequest { db, query, req, ch }
+    }
+}
+
 pub struct PutRequest<'a> {
     pub cf: &'a str,
     pub query: Option<Query>,
@@ -142,10 +153,7 @@ pub struct PutRequest<'a> {
 
 impl PutRequest<'a> {
     pub fn new(
-        db: Arc<RwLock<rocksdb::DB>>,
-        req: AppRequest,
-        cf: &'a str,
-        path_id: Option<&'a str>,
+        db: Arc<RwLock<rocksdb::DB>>, req: AppRequest, cf: &'a str, path_id: Option<&'a str>,
     ) -> Self {
         PutRequest {
             cf,
@@ -171,7 +179,7 @@ pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
         let data = rocks::range(
             r.db,
             is_reverse(&r.query),
-            Some(id.as_ref()),
+            Some(id.as_str()),
             r.cf,
             dbiterator_filters(r.query, r.ch),
         )?;
@@ -180,26 +188,43 @@ pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
     }
 }
 
+pub fn all(
+    db: Arc<RwLock<rocksdb::DB>>, query: Option<Query>, cf: &str, ch: Option<Channel>,
+) -> Result<Response<Body>, Error> {
+    since(SinceRequest {
+        query,
+        id: None,
+        cf,
+        topic: None,
+        ch,
+        db,
+        is_prefix: false,
+    })
+}
+
+pub fn sql(r: SqlRequest) -> Result<Response<Body>, Error> {
+    let value = block_on(hyper::body::to_bytes(r.req)).map_err(Error::BodyParsingError)?;
+    let sql =
+        std::str::from_utf8(value.as_ref()).map_err(|err| Error::Utf8Error(err.to_string()))?;
+
+    let dialect = GenericDialect {};
+    let ast = Parser::parse_sql(&dialect, sql.to_string()).map_err(Error::SqlError)?;
+
+    let from = sql::utils::get_from(&ast).ok_or_else(|| Error::CFNotFound("".to_string()))?;
+    since(SinceRequest {
+        query: r.query,
+        id: None,
+        cf: from.as_str(),
+        topic: None,
+        ch: r.ch,
+        db: r.db,
+        is_prefix: false,
+    })
+}
+
 pub fn try_streaming(db: Arc<RwLock<rocksdb::DB>>) -> Result<Response<Body>, Error> {
     let res = rocks::try_streaming(db, dbiterator_filters(None, None))?;
     new_read_ok_iter_with_db(res)
-}
-
-pub fn all(
-    db: Arc<RwLock<rocksdb::DB>>,
-    query: Option<Query>,
-    cf: &str,
-    ch: Option<Channel>,
-) -> Result<Response<Body>, Error> {
-    let id = get_id(&query, None, None)?;
-    let result = rocks::range(
-        db,
-        is_reverse(&query),
-        Some(id.as_str()),
-        cf,
-        dbiterator_filters(query, ch),
-    )?;
-    new_read_ok_iter_with_db(result)
 }
 
 pub fn put(r: PutRequest) -> Result<Response<Body>, Error> {
@@ -224,11 +249,9 @@ pub fn put(r: PutRequest) -> Result<Response<Body>, Error> {
                 None
             }
         })
-        .fold(None, |acc, s| {
-            match acc {
-                Some(e) => Some(format!("{}, {}", e, s)),
-                None => Some(s),
-            }
+        .fold(None, |acc, s| match acc {
+            Some(e) => Some(format!("{}, {}", e, s)),
+            None => Some(s),
         });
 
     match errors {
@@ -237,36 +260,8 @@ pub fn put(r: PutRequest) -> Result<Response<Body>, Error> {
     }
 }
 
-pub fn sql(
-    db: Arc<RwLock<rocksdb::DB>>,
-    query: Option<Query>,
-    req: Body,
-    ch: Option<Channel>,
-) -> Result<Response<Body>, Error> {
-    let value = block_on(hyper::body::to_bytes(req)).map_err(Error::BodyParsingError)?;
-    let sql = from_utf8(value.as_ref()).map_err(|err| Error::Utf8Error(err.to_string()))?;
-
-    let dialect = GenericDialect {};
-    let ast = Parser::parse_sql(&dialect, sql.to_string()).map_err(Error::SqlError)?;
-
-    let from = sql::utils::get_from(&ast).ok_or_else(|| Error::CFNotFound("".to_string()))?;
-
-    let result = rocks::range(
-        db,
-        is_reverse(&query),
-        None,
-        from.as_str(),
-        dbiterator_filters(query, ch),
-    )?;
-    new_read_ok_iter_with_db(result)
-}
-
 pub fn get(
-    db: Arc<RwLock<rocksdb::DB>>,
-    cf: &str,
-    id: &str,
-    query: Option<Query>,
-    ch: Option<Channel>,
+    db: Arc<RwLock<rocksdb::DB>>, cf: &str, id: &str, query: Option<Query>, ch: Option<Channel>,
 ) -> Result<Response<Body>, Error> {
     let result = rocks::get(db, &cf, &id, |i| {
         let iter = vec![i].into_iter();
@@ -313,8 +308,7 @@ pub fn new_read_ok_iter_with_db(v: Vec<SimplePair>) -> Result<Response<Body>, Er
 }
 
 fn dbiterator_filters(
-    query: Option<Query>,
-    ch: Option<Channel>,
+    query: Option<Query>, ch: Option<Channel>,
 ) -> Box<dyn FnOnce(DBIterator) -> Vec<SimplePair>> {
     box move |iter| -> Vec<SimplePair> {
         let sledge_iter = iter.map(SimplePair::new_boxed);
@@ -323,9 +317,7 @@ fn dbiterator_filters(
 }
 
 fn apply_filters(
-    query: Option<Query>,
-    ch: Option<Channel>,
-    iter: impl Iterator<Item = SimplePair> + Send + Sync,
+    query: Option<Query>, ch: Option<Channel>, iter: impl Iterator<Item = SimplePair> + Send + Sync,
 ) -> Vec<SimplePair> {
     let mut mods = Filters::new(query, ch, None);
     let iter2 = mods.apply(iter);
@@ -333,9 +325,7 @@ fn apply_filters(
 }
 
 fn get_id(
-    query: &Option<Query>,
-    path_id: Option<&str>,
-    req: Option<&Bytes>,
+    query: &Option<Query>, path_id: Option<&str>, req: Option<&Bytes>,
 ) -> Result<String, Error> {
     if let Some(q) = query {
         if let (Some(id), Some(req)) = (q.field_path.as_ref(), req) {

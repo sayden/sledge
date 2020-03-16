@@ -20,32 +20,16 @@ where
     F: FnOnce(DBIterator) -> Vec<SimplePair>,
 {
     let mode = get_range_mode(is_reverse, id);
-
     let db = db.read().unwrap();
-
     let cf = db
         .cf_handle(cf_name)
         .ok_or_else(|| Error::CFNotFound(cf_name.to_string()))?;
-    let source_iter = db.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
-
-    let sledge_iter = f(source_iter);
-
-    Ok(sledge_iter)
-}
-
-pub fn try_streaming<F, R>(db: Arc<RwLock<DB>>, f: F) -> Result<R, Error>
-where
-    F: FnOnce(DBIterator) -> R,
-{
-    let mode = get_range_mode(false, None);
-    let db = db.read().unwrap();
-    let cf = db
-        .cf_handle("test_db")
-        .ok_or_else(|| Error::CannotRetrieveCF("test_db".to_string()))?;
 
     let source_iter = db.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
 
-    Ok(f(source_iter))
+    let vector = f(source_iter);
+
+    Ok(vector)
 }
 
 pub fn range_prefix<F>(
@@ -68,6 +52,21 @@ where
     let ret_iter = RawIteratorWrapper { inner: iter };
     let res = f(ret_iter);
     Ok(res)
+}
+
+pub fn try_streaming<F, R>(db: Arc<RwLock<DB>>, f: F) -> Result<R, Error>
+where
+    F: FnOnce(DBIterator) -> R,
+{
+    let mode = get_range_mode(false, None);
+    let db = db.read().unwrap();
+    let cf = db
+        .cf_handle("test_db")
+        .ok_or_else(|| Error::CannotRetrieveCF("test_db".to_string()))?;
+
+    let source_iter = db.iterator_cf(cf, mode).map_err(Error::RocksDB)?;
+
+    Ok(f(source_iter))
 }
 
 pub fn get<F>(db: Arc<RwLock<DB>>, cf: &str, id: &str, f: F) -> Result<Vec<SimplePair>, Error>

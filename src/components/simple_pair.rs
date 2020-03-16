@@ -29,9 +29,7 @@ impl SimplePair {
         }
     }
 
-    pub fn new_vec(k: Vec<u8>, v: Vec<u8>) -> Self {
-        SimplePair { id: k, value: v }
-    }
+    pub fn new_vec(k: Vec<u8>, v: Vec<u8>) -> Self { SimplePair { id: k, value: v } }
 }
 
 #[derive(Serialize, Deserialize)]

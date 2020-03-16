@@ -49,8 +49,8 @@ impl Channel {
         })
     }
 
-    pub fn parse_and_modify<'a>(&self, input_data: &[u8]) -> Option<Vec<u8>> {
-        if self.channel.len() == 0 {
+    pub fn parse_and_modify(&self, input_data: &[u8]) -> Option<Vec<u8>> {
+        if self.channel.is_empty() {
             log::warn!("mutator list in channel is empty");
             return None;
         }
@@ -68,21 +68,20 @@ impl Channel {
             _ => None,
         };
 
-        let mut x = maybe_value.or(serde_json::from_slice(input_data)
-            .map_err(|err| log::warn!("error trying to mutate value: {}", err))
-            .ok())?;
+        let mut x = maybe_value.or_else(|| {
+            serde_json::from_slice(input_data)
+                .map_err(|err| log::warn!("error trying to mutate value: {}", err))
+                .ok()
+        })?;
 
         let mutp = x.as_object_mut()?;
 
         for modifier in self.channel.iter() {
-            match modifier.mutate(mutp.borrow_mut()) {
-                Err(err) => {
-                    log::warn!("error trying to modify json '{}'", err);
-                    if self.omit_errors {
-                        return None;
-                    }
+            if let Err(err) = modifier.mutate(mutp.borrow_mut()) {
+                log::warn!("error trying to modify json '{}'", err);
+                if self.omit_errors {
+                    return None;
                 }
-                _ => (),
             }
         }
 

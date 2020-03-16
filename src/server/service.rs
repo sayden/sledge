@@ -10,7 +10,7 @@ use crate::channels::channel::Channel;
 use crate::components::errors::Error;
 use crate::components::rocks;
 use crate::server::handlers;
-use crate::server::handlers::{AppRequest, PutRequest, SPath, SinceRequest};
+use crate::server::handlers::{AppRequest, PutRequest, SPath, SinceRequest, SqlRequest};
 use crate::server::query::Query;
 
 #[derive(Debug)]
@@ -68,7 +68,9 @@ impl Service<Request<Body>> for Svc {
 }
 
 impl Svc {
-    pub fn new(db: Arc<RwLock<rocksdb::DB>>) -> Self { Svc { db } }
+    pub fn new(db: Arc<RwLock<rocksdb::DB>>) -> Self {
+        Svc { db }
+    }
 
     fn put_handlers(&self, req: AppRequest<'_>) -> Result<Response<Body>, Error> {
         match (req.path.route, req.path.cf, req.path.id_or_action) {
@@ -85,9 +87,11 @@ impl Svc {
 
     fn post_handlers(&self, r: AppRequest<'_>) -> Result<Response<Body>, Error> {
         match (r.path.route, r.path.cf, r.path.id_or_action) {
-            (Some("_sql"), ..) => handlers::sql(self.db.clone(), r.query, r.body, r.ch),
-            (Some("_db"), Some(cf_name), Some(id)) => {
-                handlers::get(self.db.clone(), cf_name, id, r.query, r.ch)
+            (Some("_sql"), ..) => {
+                handlers::sql(SqlRequest::new(self.db.clone(), r.query, r.body, r.ch))
+            }
+            (Some("_db"), Some(cf), Some(id)) => {
+                handlers::get(self.db.clone(), cf, id, r.query, r.ch)
             }
             (Some("_test"), ..) => handlers::try_streaming(self.db.clone()),
 
@@ -111,14 +115,10 @@ impl Svc {
                 let since_request = SinceRequest::new(self.db.clone(), r, id, cf, topic);
                 handlers::since(since_request)
             }
-            (Some("_db"), Some(cf_name), Some(id), ..) => {
-                match id {
-                    "_all" | "_all_reverse" => {
-                        handlers::all(self.db.clone(), r.query, cf_name, r.ch)
-                    }
-                    id => handlers::get(self.db.clone(), cf_name, id, r.query, r.ch),
-                }
-            }
+            (Some("_db"), Some(cf_name), Some(id), ..) => match id {
+                "_all" | "_all_reverse" => handlers::all(self.db.clone(), r.query, cf_name, r.ch),
+                id => handlers::get(self.db.clone(), cf_name, id, r.query, r.ch),
+            },
             _ => Err(Error::WrongQuery),
         }
         .and_then(Ok)
@@ -147,7 +147,9 @@ impl Svc {
     }
 }
 
-fn get_query(uri: &Uri) -> Option<Query> { serde_urlencoded::from_str::<Query>(uri.query()?).ok() }
+fn get_query(uri: &Uri) -> Option<Query> {
+    serde_urlencoded::from_str::<Query>(uri.query()?).ok()
+}
 
 fn get_path(p: &str) -> Vec<&str> {
     //TODO use some library for this
