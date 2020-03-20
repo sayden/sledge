@@ -149,7 +149,7 @@ pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
         let data = rocks::range_prefix(r.db.clone(), id, r.cf, dbiterator_filters(r.query, r.ch))?;
         get_iterating_response_with_topic(data, topic)
     } else {
-        let data = rocks::range(r.db, is_reverse(&r.query), id, r.cf, dbiterator_filters(r.query, r.ch))?;
+        let data = rocks::range(r.db, is_reverse(&r.query), Some(id), r.cf, dbiterator_filters(r.query, r.ch))?;
 
         get_iterating_response_with_topic(data, r.topic)
     }
@@ -158,7 +158,8 @@ pub fn since(r: SinceRequest) -> Result<Response<Body>, Error> {
 pub fn all(
     db: Arc<RwLock<rocksdb::DB>>, query: Option<Query>, cf: &str, ch: Option<Channel>,
 ) -> Result<Response<Body>, Error> {
-    since(SinceRequest { query, id: None, cf, topic: None, ch, db, is_prefix: false })
+    let data = rocks::range(db, is_reverse(&query), None, cf, dbiterator_filters(query, ch))?;
+    get_iterating_response_with_topic(data, None)
 }
 
 pub fn sql(r: SqlRequest) -> Result<Response<Body>, Error> {

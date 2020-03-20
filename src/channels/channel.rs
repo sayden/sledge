@@ -1,21 +1,22 @@
-use std::borrow::BorrowMut;
-use std::ops::Deref;
+use std::{borrow::BorrowMut, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::channels::mutators::{factory, Mutator, MutatorType};
-use crate::components::errors::Error;
+use crate::{
+    channels::mutators::{factory, Mutator, MutatorType},
+    components::errors::Error,
+};
 
 pub struct Channel {
-    pub name: String,
-    pub channel: Vec<Box<dyn Mutator>>,
+    pub name:        String,
+    pub channel:     Vec<Box<dyn Mutator>>,
     pub omit_errors: bool,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ChannelToParseJSON {
-    name: String,
+    name:    String,
     channel: Vec<Value>,
 }
 
@@ -42,17 +43,13 @@ impl Channel {
             })
             .collect::<Vec<Box<dyn Mutator>>>();
 
-        Ok(Channel {
-            name: "".to_string(),
-            channel: mutators,
-            omit_errors,
-        })
+        Ok(Channel { name: "".to_string(), channel: mutators, omit_errors })
     }
 
     pub fn parse_and_modify(&self, input_data: &[u8]) -> Option<Vec<u8>> {
         if self.channel.is_empty() {
             log::warn!("mutator list in channel is empty");
-            return None;
+            return None
         }
 
         let first_mod = self.channel.first().unwrap();
@@ -69,9 +66,7 @@ impl Channel {
         };
 
         let mut x = maybe_value.or_else(|| {
-            serde_json::from_slice(input_data)
-                .map_err(|err| log::warn!("error trying to mutate value: {}", err))
-                .ok()
+            serde_json::from_slice(input_data).map_err(|err| log::warn!("error trying to mutate value: {}", err)).ok()
         })?;
 
         let mutp = x.as_object_mut()?;
@@ -80,23 +75,19 @@ impl Channel {
             if let Err(err) = modifier.mutate(mutp.borrow_mut()) {
                 log::warn!("error trying to modify json '{}'", err);
                 if self.omit_errors {
-                    return None;
+                    return None
                 }
             }
         }
 
         serde_json::to_vec(&mutp)
-            .map_err(|err| {
-                log::warn!(
-                    "error trying to create mutable reference to json: {}",
-                    err.to_string()
-                )
-            })
+            .map_err(|err| log::warn!("error trying to create mutable reference to json: {}", err.to_string()))
             .ok()
     }
 }
 
 impl Deref for Channel {
     type Target = Vec<Box<dyn Mutator>>;
+
     fn deref(&self) -> &Self::Target { &self.channel }
 }
