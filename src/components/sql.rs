@@ -6,21 +6,54 @@ use serde_json::Value as sValue;
 use sqlparser::ast::{Expr, SelectItem};
 
 pub mod utils {
-    use sqlparser::ast::{SetExpr, Statement, TableFactor};
+    use sqlparser::ast::{
+        JoinConstraint, JoinOperator, SetExpr, Statement, TableAlias, TableFactor,
+    };
 
     pub fn get_from(ast: &[Statement]) -> Option<String> {
-        let st = ast.first()?;
-        if let Statement::Query(q_st) = st {
-            if let SetExpr::Select(s) = &q_st.body {
-                if let Some(b) = s.from.first() {
-                    return match &b.relation {
-                        TableFactor::Table { name, .. } => Some(name.0.join("")),
-                        _ => None,
-                    };
+        for st in ast {
+            if let Statement::Query(q_st) = st {
+                if let SetExpr::Select(s) = &q_st.body {
+                    for from in &s.from {
+                        for join in &from.joins {
+                            match &join.relation {
+                                TableFactor::Table { name, alias, .. } => {
+                                    println!("JOIN name {}, alias {}", name, alias.clone().unwrap())
+                                }
+                                _ => (),
+                            };
+                            match &join.join_operator {
+                                JoinOperator::Inner(i) => match i {
+                                    JoinConstraint::On(e) => println!("JOIN ON {}", e),
+                                    _ => (),
+                                },
+                                _ => {}
+                            };
+                        }
+                        match &from.relation {
+                            TableFactor::Table { name, alias, .. } => {
+                                println!("FROM name {}, alias {}", name, alias.clone().unwrap())
+                            }
+                            _ => (),
+                        };
+                    }
                 }
-            }
-        };
-        None
+            };
+        }
+
+        // let st = ast.first()?;
+        // if let Statement::Query(q_st) = st {
+        //     if let SetExpr::Select(s) = &q_st.body {
+        //         if let Some(b) = s.from.first() {
+        //             return match &b.relation {
+        //                 TableFactor::Table { name, .. } => Some(name.0.join("")),
+        //                 _ => None,
+        //             };
+        //         }
+        //     }
+        // };
+        Some("test".to_string())
+        // None
     }
 }
 
@@ -150,6 +183,7 @@ mod expr {
 }
 
 pub fn solve_projection(projection: &[SelectItem], jj: sValue) -> Option<sValue> {
+    println!("Solving projection");
     let mut out = sValue::from_str("{}").unwrap();
 
     for v in projection {
@@ -161,9 +195,21 @@ pub fn solve_projection(projection: &[SelectItem], jj: sValue) -> Option<sValue>
                     let a = jj.get(&i)?;
                     out[i] = a.clone();
                 }
-                Expr::Value(v) => println!("Value {:?}", v),
+                // Expr::Value(v) =>{
+                //   out[format!("${}",i)] = v.into();
+                // } ,
+                Expr::CompoundIdentifier(c) => {
+                    let field = c.get(1)?;
+                    let a = jj.get(field)?;
+                    out[field] = a.clone();
+                }
                 e => println!("Expression not recognized: {:?}", e),
             },
+            // SelectItem::ExprWithAlias{ expr, alias } => {
+            //     // solve_projection()
+            //     let a = jj.get(&expr)?;
+            //     out[alias] = a.clone();
+            // }
             _ => (),
         }
     }
